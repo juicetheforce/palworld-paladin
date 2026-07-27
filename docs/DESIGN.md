@@ -43,6 +43,19 @@
 > v1.0.1.100619 build — live map reverts to sav-parsing until it ships
 > (§5.1, §6.5); hot-backup method validated on a small world, verdict at
 > scale still open (§11).
+>
+> **Revision 9 — 2026-07-27.** "Temperatures" resolved: host hardware
+> temps, folded into a graceful-degrading host-metrics component (§6.5,
+> §11).
+>
+> **Revision 10 — 2026-07-27.** Host-metrics page fully specified (§6.5):
+> memory with threshold-annotated server RSS, hottest-core + steal-time
+> CPU view, pre-flight-annotated disk with per-owner breakdown, temps,
+> game-side metrics on the same page, history via the downsampled store.
+>
+> **Revision 11 — 2026-07-27.** Network scoped in as an observational
+> panel (throughput + player-count correlation, no saturation verdicts —
+> host counters can't see the upstream bottleneck) (§6.5).
 
 ---
 
@@ -554,9 +567,55 @@ as designed so the swap-back is mechanical.
 
 **Shared:**
 - Map tiles/assets — reuse PST's (Apache 2.0). **[confirmed license.]**
-- **"Temperatures"** — meaning unresolved: host hardware temps (lm-sensors,
-  OS-level, not Palworld-sourced) vs in-game environmental data. **[open —
-  needs clarification; they are entirely different data sources.]**
+- **Host metrics (incl. temperatures) — RESOLVED: host hardware temps**
+  (operator clarified, 2026-07-27), i.e. CPU/system temps, not in-game
+  data. Folded into a single small host-metrics component alongside reads
+  Paladin already needs: host RAM (RAM-threshold restart), disk free
+  (backup pre-flight), CPU load. Source: `/sys` directly (e.g.
+  `/sys/class/hwmon`), no lm-sensors package dependency. **Must degrade
+  gracefully:** VMs typically expose no thermal sensors — "no sensors
+  detected" hides the panel and is correct behavior, not an error; the
+  Proxmox test box natively exercises this path, bare-metal deployments
+  get the full readout. **[decided]**
+
+**Host metrics page (spec expanded at revision 10).** One triage view:
+"is the problem the game or the host?" Every metric earns its place by
+answering an operator question, annotated with Paladin's own thresholds
+wherever one exists. **[decided]**
+- **Memory (headline):** host total/available; **game-server process RSS**
+  as its own series — this is what the RAM-threshold restart reads, so its
+  chart carries a horizontal line at the configured threshold (the next
+  auto-restart is visible before it happens); **swap usage as a red flag**
+  (a game server touching swap stutters before anything crashes).
+- **CPU:** overall load AND **hottest single core** prominently — Palworld
+  is single-thread bound, so one pinned core matters more than a calm
+  average; plus **steal time** (`%st` from `/proc/stat`), which on a VM is
+  the only in-guest signal distinguishing "game is heavy" from
+  "hypervisor is busy."
+- **Disk:** free space on the install/backup volumes, gauge annotated at
+  the backup pre-flight requirement (~2× world size); usage breakdown by
+  owner: game install / world / Paladin backups / the game's own rolling
+  backups (`bIsUseBackupSaveData`) — two backup systems, two piles, shown
+  separately.
+- **Temps:** as above (hwmon; hidden gracefully when absent).
+- **Game-side metrics on the same page:** FPS, frame time, player count,
+  in-game days, process uptime — from REST `/metrics` (confirmed working).
+- **History:** charts fed by the §6.5 downsampled-metrics slice; the
+  memory-growth curve with restart events annotated makes the leak (and
+  the supervisor's response) self-explanatory.
+- **Network — observational only (added at revision 11):** RX/TX
+  throughput on the primary interface (`/sys/class/net/*/statistics`),
+  shown alongside player count so traffic-vs-players correlation is
+  visible at a glance. **Deliberately makes no saturation verdicts:**
+  per-player Palworld bandwidth is modest (32 players is single-digit
+  percent of gigabit), and the real-world bottleneck for home hosts —
+  residential upload — sits upstream of the WAN link and is invisible to
+  host counters, so any "% of capacity" gauge would be confidently wrong.
+  Instead, a one-line tooltip teaches the failure mode: "Host counters
+  can't see upstream (ISP) limits; if players report lag while this
+  number is high, your upload is the suspect." **[decided]**
+- **Deliberately excluded:** per-process listings, inode counts —
+  questions nobody operating one game server asks.
 
 ### 6.6 Auth (single-admin, RBAC-ready shape)
 
@@ -922,8 +981,8 @@ Still open:
   re-baseline RAM growth before choosing the default restart threshold.
 - **[open] Community KB link target.** Which community wiki is most complete
   and most likely to stay maintained for v1.0+, to use for `kb_link` values.
-- **[open] "Temperatures" definition.** Host hardware temps vs in-game data —
-  different sources; clarify intent.
+- **"Temperatures" definition — RESOLVED:** host hardware temps (CPU
+  etc.), per operator. See §6.5 host-metrics component.
 - **[open] Save-parser integration.** Link PST's Go package directly vs shell
   out to `sav_cli` — decide on first build of the historical tier.
 - **[open] Scoped-grant mechanism.** sudoers rule vs polkit policy for the
