@@ -11,6 +11,7 @@
 # Usage:   sudo ./bootstrap-palworld-testbox.sh
 # Target:  Ubuntu 22.04 / 24.04, amd64, ~16 GB RAM recommended, ~20 GB disk.
 # Rerun-safe: skips what already exists, revalidates the game files.
+# v1.1: fixed silent pipefail exit in password gen; SteamCMD retry loop.
 # =============================================================================
 set -euo pipefail
 
@@ -45,7 +46,7 @@ FREE_GB=$(df -BG --output=avail /home | tail -1 | tr -dc '0-9')
 log "Installing dependencies (curl, lib32gcc-s1 for SteamCMD)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq curl tar lib32gcc-s1 >/dev/null
+apt-get install -y -qq curl tar openssl lib32gcc-s1 >/dev/null
 
 # ---- service account --------------------------------------------------------
 if id "${SERVICE_USER}" &>/dev/null; then
@@ -69,10 +70,14 @@ fi
 
 # ---- game server ------------------------------------------------------------
 log "Installing/validating Palworld dedicated server (app ${APP_ID}) — this downloads several GB"
-run_as "'${STEAMCMD_DIR}/steamcmd.sh' +force_install_dir '${INSTALL_DIR}' \
-  +login anonymous +app_update ${APP_ID} validate +quit"
-
-[[ -x "${INSTALL_DIR}/PalServer.sh" ]] || die "PalServer.sh missing after install — SteamCMD output above should say why."
+for ATTEMPT in 1 2 3; do
+  run_as "'${STEAMCMD_DIR}/steamcmd.sh' +force_install_dir '${INSTALL_DIR}' \
+    +login anonymous +app_update ${APP_ID} validate +quit" || true
+  [[ -x "${INSTALL_DIR}/PalServer.sh" ]] && break
+  warn "SteamCMD attempt ${ATTEMPT} didn't produce PalServer.sh (its first run after a self-update often fails spuriously); retrying..."
+  sleep 3
+done
+[[ -x "${INSTALL_DIR}/PalServer.sh" ]] || die "PalServer.sh missing after 3 SteamCMD attempts — see output above."
 
 # Well-known requirement: the server needs steamclient.so in ~/.steam/sdk64
 log "Applying the sdk64 steamclient.so fix"
@@ -89,7 +94,9 @@ else
   [[ -f "${INSTALL_DIR}/DefaultPalWorldSettings.ini" ]] || die "DefaultPalWorldSettings.ini not found in ${INSTALL_DIR}"
   run_as "mkdir -p '${CONFIG_DIR}' && cp '${INSTALL_DIR}/DefaultPalWorldSettings.ini' '${CONFIG_FILE}'"
 
-  ADMIN_PW=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)
+  # NOTE: do NOT generate this with `tr </dev/urandom | head` — under
+  # `set -o pipefail` the SIGPIPE from head silently kills the script.
+  ADMIN_PW=$(openssl rand -hex 12)
 
   log "Enabling REST API and setting AdminPassword (single-line-safe edits)"
   edit_key() {  # edit_key <pattern> <replacement> <label>
