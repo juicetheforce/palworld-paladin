@@ -31,6 +31,10 @@
 > **Revision 6 — 2026-07-27.** Repository structure decided (§5.4):
 > Go `internal/`-only layout, open questions contained behind interfaces,
 > single binary via `go:embed` of the key-list data file and web bundle.
+>
+> **Revision 7 — 2026-07-27.** License resolved: Apache 2.0, committed to
+> the repo (§4, §11). Repo is live and public at
+> `github.com/juicetheforce/palworld-paladin`.
 
 ---
 
@@ -155,14 +159,14 @@ workflow. **[decided]**
   behavior; **do not copy or fork its code**. Its server-control features are
   reimplemented from scratch against the public REST/RCON APIs (which belong
   to Pocketpair, not to palworld-admin), which is clean.
-- **Paladin's own license:** open source by intent — the author does not
-  plan to guarantee perpetual maintenance, so a **permissive** license
-  (people can freely fork, modify, and carry it forward) fits better than
-  copyleft. **Leaning Apache 2.0**, primarily to match the main dependency
-  (PST is Apache 2.0), which keeps reuse clean and avoids license-mixing
-  friction; MIT is the simpler fallback if PST reuse ever falls away. Final
-  choice **[open]**, but the direction (permissive, likely Apache 2.0) is
-  settled. **[decided in direction; specific license open.]**
+- **Paladin's own license: RESOLVED — Apache 2.0** (committed to the repo,
+  2026-07-27). Rationale as originally leaned: permissive (fork-and-carry-
+  forward friendly, matching the no-perpetual-maintenance intent), matches
+  the primary dependency (PST's parser is Apache 2.0) so reuse is
+  frictionless, and carries an explicit patent grant that MIT lacks — which
+  matters for a tool others deploy. **[decided]** Standing caveat: map
+  tiles and all game imagery are © Pocketpair and are NOT covered by the
+  project license; the repo must say so wherever assets appear.
 
 > Note: license summaries above are read from project metadata, not legal
 > advice. If usage ever extends beyond personal/self-hosted use, the
@@ -901,8 +905,8 @@ Still open:
   out to `sav_cli` — decide on first build of the historical tier.
 - **[open] Scoped-grant mechanism.** sudoers rule vs polkit policy for the
   service-control exception.
-- **[open] Project license** (MIT vs Apache 2.0). Frontend framework resolved:
-  React (§5.1).
+- **Project license — RESOLVED: Apache 2.0** (§4; committed 2026-07-27).
+  Frontend framework resolved: React (§5.1).
 - **Rollback matrix — RESOLVED at revision 3 (§6.9).** STOP escalation
   resolved at revision 4 (user-initiated force-kill dialog, or cancel —
   never automatic). Remaining narrow opens: exact timeout values and the

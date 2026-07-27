@@ -44,6 +44,8 @@ REST API primary, RCON fallback · save parsing via
 
 ## License
 
-Not yet finalized — permissive by intent, leaning Apache-2.0 to match the
-primary dependency (see `docs/DESIGN.md` §4). Do not assume license terms
-until a LICENSE file lands.
+[Apache License 2.0](LICENSE).
+
+**Exception — game assets:** the world map tiles and all Palworld imagery
+are © Pocketpair, Inc. and are *not* covered by this project's license.
+They are used here for interoperability with the game they depict.
