@@ -1,9 +1,15 @@
 {
   "$comment": "Paladin settings key list \u2014 source of truth for the settings form, validation, tooltips, and gotcha surfacing (scope doc \u00a76.2). Community PRs welcome: this file is data, not code.",
   "schema_version": 1,
-  "game_version": "1.100.427 (Palworld 1.0, released 2026-07-10; hotfix 1.0.1 2026-07-15)",
+  "game_version": "v1.0.1.100619 (server-reported via /v1/api/info; 1.0 launch 2026-07-10, hotfix 1.0.1 2026-07-15)",
   "compiled": "2026-07-27",
-  "verification_status": "Compiled from the official Pocketpair 1.0 parameter docs plus current community references. Any entry with a non-empty 'verify' array has a disputed or unconfirmed field and MUST be checked against a real 1.0 DefaultPalWorldSettings.ini before the settings module ships. 'source' records provenance: official = Pocketpair 1.0 docs; community = current community docs verified against live 1.0 servers; ea-carryover = present since Early Access, carried into 1.0; deprecated = officially superseded.",
+  "template_verified": {
+    "date": "2026-07-27",
+    "server_version": "v1.0.1.100619",
+    "method": "deploy/testbox/verify-keylist.py diff against live DefaultPalWorldSettings.ini",
+    "result": "119/119 template keys covered, all template defaults match; +1 deprecated key retained for EA-config parsing; 1 in-game flag remains (bInvisibleOtherGuildBaseCampAreaFX polarity)"
+  },
+  "verification_status": "VERIFIED against a live 1.0.1 DefaultPalWorldSettings.ini (2026-07-27, testbox). Remaining non-empty 'verify' arrays mark questions a template diff cannot answer (in-game behavior) and must be checked before the relevant UI ships. 'source' records provenance: official = Pocketpair 1.0 docs; community = current community docs verified against live 1.0 servers; ea-carryover = present since Early Access, carried into 1.0; deprecated = officially superseded.",
   "sources": [
     "https://docs.palworldgame.com/settings-and-operation/configuration/ (official, v1.0.0)",
     "https://docs.palworldgame.com/settings-and-operation/technologyids (official)",
@@ -145,15 +151,13 @@
       "key": "BanListURL",
       "category": "server",
       "type": "string",
-      "default": "https://api.palworldgame.com/api/banlist.txt",
+      "default": "https://b.palworldgame.com/api/banlist.txt",
       "tooltip": "URL the server pulls a global ban-list feed from.",
       "added_in": null,
       "source": "ea-carryover",
       "gotcha": "This is Pocketpair's global feed, not the server's own bans \u2014 those live in Pal/Saved/SaveGames/banlist.txt. Don't point this at arbitrary URLs.",
       "kb_link": null,
-      "verify": [
-        "default"
-      ]
+      "verify": []
     },
     {
       "key": "Region",
@@ -175,11 +179,9 @@
       "tooltip": "Multiplayer flag for co-op session settings.",
       "added_in": null,
       "source": "ea-carryover",
-      "gotcha": null,
+      "gotcha": "Template-verified present with default False; believed irrelevant on dedicated servers.",
       "kb_link": null,
-      "verify": [
-        "relevance-on-dedicated"
-      ]
+      "verify": []
     },
     {
       "key": "AllowConnectPlatform",
@@ -189,7 +191,7 @@
       "tooltip": "Superseded platform-restriction key.",
       "added_in": null,
       "source": "deprecated",
-      "gotcha": "Officially \"Not available in this version. Use CrossplayPlatforms instead.\" Paladin renders it read-only/hidden.",
+      "gotcha": "Officially \"Not available in this version. Use CrossplayPlatforms instead.\" VERIFIED absent from the 1.0.1 template \u2014 kept so the parser recognizes it in adopted EA-era configs; render read-only/hidden.",
       "kb_link": null,
       "verify": []
     },
@@ -214,6 +216,18 @@
       "added_in": null,
       "source": "official",
       "gotcha": null,
+      "kb_link": null,
+      "verify": []
+    },
+    {
+      "key": "bEnableBuildingPlayerUIdDisplay",
+      "category": "server",
+      "type": "bool",
+      "default": false,
+      "tooltip": "Display the creator's player ID on structures.",
+      "added_in": "1.0",
+      "source": "official",
+      "gotcha": "A moderation tool on public servers: see who built the thing blocking the path.",
       "kb_link": null,
       "verify": []
     },
@@ -439,9 +453,7 @@
       "source": "community",
       "gotcha": null,
       "kb_link": null,
-      "verify": [
-        "default"
-      ]
+      "verify": []
     },
     {
       "key": "PlayerDataPalStorageUpdateCheckTickInterval",
@@ -453,9 +465,7 @@
       "source": "community",
       "gotcha": null,
       "kb_link": null,
-      "verify": [
-        "default"
-      ]
+      "verify": []
     },
     {
       "key": "BuildingNameDisplayCacheTTLSeconds",
@@ -467,9 +477,7 @@
       "source": "community",
       "gotcha": null,
       "kb_link": null,
-      "verify": [
-        "default"
-      ]
+      "verify": []
     },
     {
       "key": "bEnableFastTravel",
@@ -503,11 +511,9 @@
       "tooltip": "Let players choose their starting location on the map.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Published defaults disagree: the shipped template reportedly says True while official docs imply False, and the default is reported changed in 1.0. Check the value in the actual file.",
+      "gotcha": "Default VERIFIED False against the 1.0.1 template (2026-07-27) \u2014 earlier published sources disagreed.",
       "kb_link": null,
-      "verify": [
-        "default"
-      ]
+      "verify": []
     },
     {
       "key": "bExistPlayerAfterLogout",
@@ -681,7 +687,7 @@
       "gotcha": "Naming is inverted vs the official description (\"Show base area boundaries\") \u2014 verify polarity in-game before documenting UI labels.",
       "kb_link": null,
       "verify": [
-        "polarity"
+        "polarity-in-game"
       ]
     },
     {
@@ -910,9 +916,7 @@
       "source": "official",
       "gotcha": null,
       "kb_link": null,
-      "verify": [
-        "added_in"
-      ]
+      "verify": []
     },
     {
       "key": "AdditionalDropItemWhenPlayerKillingInPvPMode",
@@ -924,9 +928,7 @@
       "source": "official",
       "gotcha": null,
       "kb_link": null,
-      "verify": [
-        "default"
-      ]
+      "verify": []
     },
     {
       "key": "AdditionalDropItemNumWhenPlayerKillingInPvPMode",
@@ -1224,10 +1226,7 @@
       "source": "community",
       "gotcha": null,
       "kb_link": null,
-      "verify": [
-        "exists",
-        "default"
-      ]
+      "verify": []
     },
     {
       "key": "BuildObjectDamageRate",
@@ -1315,11 +1314,9 @@
       ],
       "added_in": null,
       "source": "official",
-      "gotcha": "Default is DISPUTED for 1.0: shipped template reportedly still says All, while the 1.0 default is widely reported changed to Item. Verify in the actual DefaultPalWorldSettings.ini. Enum meanings \u2014 None: no drops; Item: all items except equipment; ItemAndEquipment: all items; All: all items AND all party Pals.",
+      "gotcha": "Default VERIFIED as Item against the 1.0.1 template (changed from EA's All) \u2014 adopted EA configs may still carry All, which is harsher than most groups expect. Enum meanings \u2014 None: no drops; Item: all items except equipment; ItemAndEquipment: all items; All: all items AND all party Pals.",
       "kb_link": null,
-      "verify": [
-        "default"
-      ]
+      "verify": []
     },
     {
       "key": "EquipmentDurabilityDamageRate",
@@ -1365,11 +1362,9 @@
       "tooltip": "Hours for a Huge Egg to hatch (other eggs scale from it). 0 = instant.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Default CHANGED in 1.0 (widely reported 72h -> 1h, disputed). An EA-carryover config still contains the old 72 and keeps using it \u2014 the classic 'my eggs still take forever' report. Verify the 1.0 template value.",
+      "gotcha": "Default VERIFIED 1.0 hours against the 1.0.1 template (changed from EA's 72). An EA-carryover config still contains 72 and keeps using it \u2014 the classic 'my eggs still take forever' report.",
       "kb_link": null,
-      "verify": [
-        "default"
-      ]
+      "verify": []
     },
     {
       "key": "GuildPlayerMaxNum",
@@ -1393,9 +1388,7 @@
       "source": "official",
       "gotcha": null,
       "kb_link": null,
-      "verify": [
-        "added_in"
-      ]
+      "verify": []
     },
     {
       "key": "AutoTransferMasterThresholdDays",
@@ -1467,9 +1460,7 @@
       "source": "official",
       "gotcha": null,
       "kb_link": null,
-      "verify": [
-        "added_in"
-      ]
+      "verify": []
     },
     {
       "key": "RespawnPenaltyDurationThreshold",
@@ -1481,9 +1472,7 @@
       "source": "official",
       "gotcha": null,
       "kb_link": null,
-      "verify": [
-        "added_in"
-      ]
+      "verify": []
     },
     {
       "key": "RespawnPenaltyTimeScale",
@@ -1495,9 +1484,7 @@
       "source": "official",
       "gotcha": null,
       "kb_link": null,
-      "verify": [
-        "added_in"
-      ]
+      "verify": []
     },
     {
       "key": "bActiveUNKO",
