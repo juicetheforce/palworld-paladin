@@ -1,0 +1,18 @@
+# Game-server unit — TEMPLATE, authored and owned by Paladin (§6.1).
+# NOTE (§6.9/I2): auto-restart here is the baseline; Paladin suspends it
+# during maintenance cycles. Keep ExecStart free of settings arguments —
+# CLI args override PalWorldSettings.ini (key-list global gotcha).
+[Unit]
+Description=Palworld dedicated server (managed by Paladin)
+After=network.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=__INSTALL_DIR__/PalServer.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

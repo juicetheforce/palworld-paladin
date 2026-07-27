@@ -1,0 +1,14 @@
+# Go
+/paladin
+*.exe
+*.test
+*.out
+
+# Frontend
+web/node_modules/
+web/dist/
+
+# Local state
+*.db
+*.log
+.env

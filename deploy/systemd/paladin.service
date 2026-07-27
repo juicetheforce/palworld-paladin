@@ -1,0 +1,15 @@
+# Paladin's own unit — TEMPLATE. Installed and finalized by install.sh (§7.1).
+# Placeholders (__SERVICE_USER__, paths) are substituted at install time.
+[Unit]
+Description=Paladin — Palworld server admin panel
+After=network.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+ExecStart=/opt/palworld-paladin/paladin
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
