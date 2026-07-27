@@ -49,7 +49,13 @@ func fakeServer(t *testing.T, pw string, requests *[]recorded, gameDataPresent b
 				"ServerName": "Fake", "ExpRate": 1.0, "BrandNewKey": true,
 			})
 		case "/v1/api/metrics":
-			json.NewEncoder(w).Encode(map[string]any{"serverfps": 60, "uptime": 123})
+			// Real field names, captured live on v1.0.1.100619.
+			json.NewEncoder(w).Encode(map[string]any{
+				"serverfps": 59, "serverfpsaverage": 59.73,
+				"serverframetime": 16.73, "currentplayernum": 0,
+				"maxplayernum": 32, "basecampnum": 4, "days": 2,
+				"uptime": 1389, "futuremetric": 1,
+			})
 		case "/v1/api/game-data":
 			if !gameDataPresent {
 				w.WriteHeader(http.StatusNotFound)
@@ -147,6 +153,27 @@ func TestModerationBodies(t *testing.T) {
 	}
 	if s := find("shutdown"); s.Body["waittime"] != float64(60) || s.Body["message"] != "maintenance" {
 		t.Fatalf("shutdown body: %+v", s.Body)
+	}
+}
+
+func TestMetricsTypedDecode(t *testing.T) {
+	var reqs []recorded
+	srv := fakeServer(t, "pw", &reqs, false)
+	defer srv.Close()
+	c := New(srv.URL, "pw")
+	m, err := c.Metrics(context.Background())
+	if err != nil {
+		t.Fatalf("Metrics: %v", err)
+	}
+	if m.MaxPlayerNum != 32 || m.BaseCampNum != 4 || m.Uptime != 1389 {
+		t.Fatalf("bad typed decode: %+v", m)
+	}
+	raw, err := c.MetricsRaw(context.Background())
+	if err != nil {
+		t.Fatalf("MetricsRaw: %v", err)
+	}
+	if _, ok := raw["futuremetric"]; !ok {
+		t.Fatal("MetricsRaw must surface unknown fields")
 	}
 }
 

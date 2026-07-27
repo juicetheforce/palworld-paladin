@@ -80,10 +80,35 @@ func (c *Client) Settings(ctx context.Context) (map[string]any, error) {
 	return out, nil
 }
 
-// Metrics returns server performance metrics as a map (fps, player count,
-// frame time, uptime, …). Map until the exact 1.0.1 field names are
-// captured live on the test box; typed getters follow that capture.
-func (c *Client) Metrics(ctx context.Context) (map[string]any, error) {
+// Metrics is the /metrics response. Shape captured LIVE on v1.0.1.100619
+// (2026-07-27) — field names are observed, not documented. BaseCampNum is
+// an undocumented bonus: live server-wide base count, pairing with the
+// BaseCampMaxNum budget on the metrics page (DESIGN.md §6.5 rev10).
+type Metrics struct {
+	ServerFPS        float64 `json:"serverfps"`
+	ServerFPSAverage float64 `json:"serverfpsaverage"`
+	ServerFrameTime  float64 `json:"serverframetime"` // milliseconds
+	CurrentPlayerNum int     `json:"currentplayernum"`
+	MaxPlayerNum     int     `json:"maxplayernum"`
+	BaseCampNum      int     `json:"basecampnum"`
+	Days             int     `json:"days"`   // in-game days elapsed
+	Uptime           int     `json:"uptime"` // seconds
+}
+
+// Metrics returns server performance metrics, typed per the live-captured
+// 1.0.1 shape. New fields a future patch adds are ignored here; use
+// MetricsRaw to see everything the server sends.
+func (c *Client) Metrics(ctx context.Context) (*Metrics, error) {
+	var out Metrics
+	if err := c.get(ctx, "/metrics", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// MetricsRaw returns the /metrics response as a map, surfacing any fields
+// the typed struct does not yet know about.
+func (c *Client) MetricsRaw(ctx context.Context) (map[string]any, error) {
 	out := map[string]any{}
 	if err := c.get(ctx, "/metrics", &out); err != nil {
 		return nil, err
