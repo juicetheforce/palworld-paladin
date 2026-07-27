@@ -56,6 +56,12 @@
 > **Revision 11 — 2026-07-27.** Network scoped in as an observational
 > panel (throughput + player-count correlation, no saturation verdicts —
 > host counters can't see the upstream bottleneck) (§6.5).
+>
+> **Revision 12 — 2026-07-27.** Settings-readback quirks verified and
+> encoded (§6.3): passwords are readback-invisible (`rest_readback:false`
+> in the key list), and readback key matching must be case-insensitive
+> (`AutoSaveSpan` → `autoSaveSpan`). palapi shipped and green against the
+> live server; /metrics shape captured (incl. undocumented basecampnum).
 
 ---
 
@@ -503,6 +509,14 @@ Sequence (first-pass state machine — to be refined before build):
 8. **VERIFY** — read back effective settings via REST and confirm the changed
    values took. Report honestly, including gotcha context where the effective
    value won't visibly change in-game (e.g. level-gated base cap).
+   **Readback rules (verified 2026-07-27):** key matching against the
+   readback is **case-insensitive** — the API returns at least one key with
+   different casing than the ini (`AutoSaveSpan` → `autoSaveSpan`), and an
+   exact-match comparator would report a false "didn't apply" on every
+   commit. Keys marked `rest_readback: false` in the key list
+   (`AdminPassword`, `ServerPassword` — never echoed by the API) are
+   reported as "applied — not verifiable via readback; file is
+   authoritative," never as failures.
 
 **Failure handling / rollback** is fully specified in §6.9 (shared state
 machine, invariants, and rollback matrix), which governs this workflow and

@@ -55,6 +55,11 @@
       "confidence": "confirmed"
     },
     {
+      "id": "settings-readback-quirks",
+      "text": "GET /v1/api/settings (the VERIFY readback source) has two verified quirks on v1.0.1.100619: (1) AdminPassword and ServerPassword are never returned (keys carry rest_readback:false; VERIFY reports them as applied-but-not-readback-verifiable, file authoritative); (2) at least one key returns with DIFFERENT CASING than the ini (AutoSaveSpan -> autoSaveSpan), so readback matching must be case-insensitive across the board.",
+      "confidence": "confirmed (tested 2026-07-27)"
+    },
+    {
       "id": "template-vs-live-file",
       "text": "DefaultPalWorldSettings.ini at the install root is a never-read template. The live file is Pal/Saved/Config/LinuxServer/PalWorldSettings.ini.",
       "confidence": "confirmed"
@@ -91,6 +96,7 @@
       "type": "string",
       "default": "",
       "tooltip": "Password required to join the server. Empty = open join.",
+      "rest_readback": false,
       "added_in": null,
       "source": "official",
       "gotcha": null,
@@ -103,6 +109,7 @@
       "type": "string",
       "default": "",
       "tooltip": "Password for in-game admin commands, RCON, and the REST API.",
+      "rest_readback": false,
       "added_in": null,
       "source": "official",
       "gotcha": "One shared credential covers every privileged interface, and REST/RCON transmit it over unencrypted HTTP Basic auth. Make it long and never expose these ports beyond localhost/LAN.",
