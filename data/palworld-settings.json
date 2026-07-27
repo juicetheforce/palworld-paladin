@@ -46,8 +46,8 @@
     },
     {
       "id": "server-rewrites-ini-on-shutdown",
-      "text": "The running server is reported to hold settings in memory and write them back to the ini on shutdown, overwriting edits made while it ran. Paladin's ordering (APPLY strictly after STOP confirms the process is gone) is immune to this by construction. Verify the behavior on the test box.",
-      "confidence": "community-reported; verify"
+      "text": "Community claim that the server rewrites the ini from memory on shutdown: TESTED AND NOT REPRODUCED on v1.0.1.100619 (2026-07-27) \u2014 a marker edit made while running survived a graceful stop with an unchanged file hash. Paladin's APPLY-after-STOP ordering is retained anyway: it is correct under both realities and future patches could change this.",
+      "confidence": "tested; not reproduced on v1.0.1"
     },
     {
       "id": "cli-args-override-ini",

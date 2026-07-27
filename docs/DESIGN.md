@@ -35,6 +35,14 @@
 > **Revision 7 — 2026-07-27.** License resolved: Apache 2.0, committed to
 > the repo (§4, §11). Repo is live and public at
 > `github.com/juicetheforce/palworld-paladin`.
+>
+> **Revision 8 — 2026-07-27.** Behavioral test-box findings folded in:
+> offline ban CONFIRMED with banlist.txt format captured (§6.7);
+> ini-rewrite-on-shutdown claim TESTED AND NOT REPRODUCED on v1.0.1;
+> `/v1/api/game-data` found DOCUMENTED BUT ABSENT (404) on the live
+> v1.0.1.100619 build — live map reverts to sav-parsing until it ships
+> (§5.1, §6.5); hot-backup method validated on a small world, verdict at
+> scale still open (§11).
 
 ---
 
@@ -315,8 +323,13 @@ own code. Everything else is permissive or reference-safe. **[decided]**
   `NPC`) and `PalBox` actors — each with nickname, owner/trainer info,
   player `userid` and IP, level, HP/MaxHP, guild ID/name, class, current
   action, and X/Y/Z location + rotation. **[confirmed against official
-  docs.]** This means the live map and live-entity views do **not** require
-  `.sav` parsing; see §6.5 for the two-tier design this enables.
+  docs — BUT verified ABSENT from the live build: authenticated requests
+  return 404 on v1.0.1.100619 (tested 2026-07-27, all plausible path
+  variants).]** Docs are ahead of the shipped binary. Until the endpoint
+  actually ships, live map / actor data comes from the historical tier
+  (sav parsing) and `palapi` re-probes `/game-data` after every game
+  update; when it answers, the live tier reclaims the map with a source
+  swap behind the `vis` interface — no redesign. **[decided]**
 - **Frontend: React** (with TypeScript), served as a built bundle by the Go
   backend. **[decided]** React does not conflict with the Go backend — it is
   the common stack across the reference projects (uitok, RNZ01, and
@@ -499,8 +512,12 @@ Revised at revision 2: the 1.0 `/game-data` endpoint (§5.1) splits
 visibility into two tiers with very different costs and freshness.
 **[decided]**
 
-**Live tier — REST `/game-data` + `/players` + `/metrics`. Poll, don't
-persist (with narrow exceptions).**
+**Live tier — REST `/players` + `/metrics` (+ `/game-data` when it
+ships — see §5.1: documented but absent on v1.0.1). Poll, don't persist
+(with narrow exceptions).** Until `/game-data` exists, actor/map data is
+served by the historical tier and the sav sidecar is load-bearing for the
+map again (the pre-revision-2 posture); the tier split and interface stay
+as designed so the swap-back is mechanical.
 - Live map (player/Pal/base positions), live roster, live HP, guild
   affiliation, server FPS — all from officially documented, versioned REST.
   No binary parsing on this path. **[confirmed the endpoint provides this.]**
@@ -581,9 +598,13 @@ player management is a core operator surface. **[decided]**
   test box.]** Design consequences:
   - Online ban: roster row → `POST /ban` with the roster's `userid`.
   - Offline ban: `POST /ban` with the Steam ID recovered from save data
-    (historical tier). **[inference that /ban accepts an offline userid —
-    verify once on the test box; fallback is appending to `banlist.txt`
-    directly, which the tool can also do since it owns the files.]**
+    (historical tier). **[CONFIRMED on the test box, 2026-07-27: the API
+    accepts a never-connected userid with HTTP 200 and persists it.]**
+    Captured mechanics: `banlist.txt` is created on first ban at
+    `Pal/Saved/SaveGames/banlist.txt`; line format is
+    `steam_<id>,<32-hex-second-field>` (second field is opaque — parse it,
+    never interpret it); `/unban` blanks the entry (empty file = empty
+    list, not an error). **[confirmed]**
   - Ban-list UI: read `banlist.txt` directly to render the visible,
     reversible ban list; issue unban via REST. **[decided]**
 - **Unban / ban-list management** — a visible, reversible ban list. A ban
@@ -880,20 +901,22 @@ Still open:
   needs test-box verification. Design consequence (now firm): the settings
   module must detect `WorldOption.sav` and warn per-affected-key at commit
   time, and the VERIFY step's honest reporting must account for it.
-- **[open] `/game-data` cost on a large 1.0 world.** The endpoint
-  serializes every actor per call; server-side cost and payload size on a
-  busy world (wild Pals included) are unmeasured. Measure on the test box
-  before fixing poll cadence defaults.
+- **[open — reframed] `/game-data` availability.** Verified ABSENT
+  (authenticated 404) on live v1.0.1.100619 despite official 1.0 docs.
+  `palapi` re-probes after each game update; the cost measurement from the
+  original open item happens if/when the endpoint ships.
 - **[open] History persistence policy defaults.** Which derived slices of
   the live tier are persisted (session events, position trails, metrics),
   at what sample rate, with what retention/downsampling. Shape decided in
   §6.5; numbers open.
-- **[open] Offline ban via REST.** Whether `POST /ban` accepts a `userid`
-  for a player who is not connected, or only disconnect-bans online
-  players. Fallback (direct `banlist.txt` append) documented in §6.7.
-- **[open] Hot-backup consistency.** Whether REST `save` + copy while
-  running yields a consistent backup, or scheduled backups need a stop
-  window (§6.8).
+- **Offline ban via REST — RESOLVED (2026-07-27, test box):** accepted
+  with HTTP 200 for a never-connected ID and persisted to `banlist.txt`;
+  format captured in §6.7.
+- **[open — method validated, verdict pending scale] Hot-backup
+  consistency.** On the fresh 0.17 MB world, `save` + live copy produced
+  stable, matching checksums — but the copy finished far inside the 30 s
+  autosave window, so this proves the method, not safety on a multi-GB
+  world. Re-run once the world has real mass (§6.8).
 - **[open] Backup retention defaults** (count/age) (§6.8).
 - **[open] Memory-threshold defaults post-1.0.** 1.0 shipped leak fixes;
   re-baseline RAM growth before choosing the default restart threshold.
@@ -960,6 +983,12 @@ Added at revision 2 (verified 2026-07-27):
   officially; file path via current admin references.]**
 - **Pocketpair explicitly warns** the REST API is not designed for direct
   internet exposure — reinforces the LAN-only bind posture. **[confirmed]**
+- **Behavioral findings (test box, v1.0.1.100619, 2026-07-27):**
+  offline ban accepted + persisted (format in §6.7); ini-rewrite-on-
+  shutdown claim NOT reproduced (marker edit survived a graceful stop,
+  hash unchanged) — APPLY-after-STOP retained defensively; `/game-data`
+  absent (404 authenticated, all path variants); `/save` responds in
+  ~40 ms on an idle world. **[confirmed]**
 - **PST is 1.0-ready:** its current releases fix 1.0-save parsing (HP,
   Talent, item-slot, guild, base-camp layouts) with an updated open-source
   `sav_cli`; parsing `Level.sav` uses ~1–3 GB RAM per parse (PST docs).
