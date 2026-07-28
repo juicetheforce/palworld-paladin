@@ -62,6 +62,13 @@
 > in the key list), and readback key matching must be case-insensitive
 > (`AutoSaveSpan` → `autoSaveSpan`). palapi shipped and green against the
 > live server; /metrics shape captured (incl. undocumented basecampnum).
+>
+> **Revision 13 — 2026-07-28.** First live commit AND restore succeeded
+> against the test box. New guiding principle: Paladin is a **removable
+> guest** (§2) — all its files under one root outside the game tree, a
+> clean `uninstall`, safety copies relocated out of the save tree after a
+> restore (§6.9). Fixes the world-detector collision found live (safety
+> copy sibling mistaken for a second world).
 
 ---
 
@@ -125,6 +132,14 @@ workflow. **[decided]**
 - **Safe by default.** LAN-only binding by default; remote access is a
   deliberate act the operator takes (e.g. Tailscale), not an accident.
   **[decided]**
+- **A removable guest.** Paladin keeps everything it owns (backups, journal,
+  database, logs, relocated safety copies) under a SINGLE root directory
+  OUTSIDE the Steam/Palworld file tree, and ships a clean `uninstall` that
+  removes Paladin without breaking the server. The only game-tree file
+  Paladin ever modifies is `PalWorldSettings.ini` (the operator's own file,
+  always left valid); the world folder is touched only transiently during a
+  restore and always left healthy. An operator must be able to get rid of
+  Paladin at any time and keep a working server. **[decided at revision 13]**
 
 ---
 
@@ -772,7 +787,13 @@ One state machine, two workflows; build it once.
 **Restore APPLY mechanics (makes I5 cheap):** the active world folder is
 *renamed aside* — that rename **is** the pre-restore safety backup (atomic
 move, same filesystem, no copy cost) — then the selected backup is copied
-into place and integrity-verified. **[decided]**
+into place and integrity-verified. The rename target is a dot-prefixed
+scratch dir the world detector ignores; once the restored world verifies
+healthy, the safety copy is RELOCATED out of the game tree into Paladin's
+own root (a plain move when same-filesystem, else copy-then-delete — safe
+because the restore already succeeded). This keeps the "removable guest"
+principle: no Paladin artifacts are left loitering in the Steam/Palworld
+save tree. **[decided at revision 13]**
 
 **Rollback matrix:**
 

@@ -39,13 +39,14 @@ var version = "0.1.0-trial"
 
 // defaults matching deploy/testbox/bootstrap-palworld-testbox.sh
 const (
-	defUnit      = "palserver.service"
-	defAPIURL    = "http://127.0.0.1:8212"
-	defCredsFile = "/home/palworld/palserver-credentials.txt"
-	defINI       = "/home/palworld/palserver/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini"
-	defSavesRoot = "/home/palworld/palserver/Pal/Saved/SaveGames/0"
-	defBackups   = "/home/palworld/paladin-backups"
-	defJournal   = "/home/palworld/paladin-journal"
+	defUnit       = "palserver.service"
+	defAPIURL     = "http://127.0.0.1:8212"
+	defCredsFile  = "/home/palworld/palserver-credentials.txt"
+	defINI        = "/home/palworld/palserver/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini"
+	defSavesRoot  = "/home/palworld/palserver/Pal/Saved/SaveGames/0"
+	defBackups    = "/home/palworld/paladin-backups"
+	defJournal    = "/home/palworld/paladin-journal"
+	defSafetyHold = "/home/palworld/paladin-safety" // relocated pre-restore copies live here
 )
 
 type deps struct {
@@ -124,7 +125,9 @@ func build() (*deps, error) {
 	}
 	var worlds []string
 	for _, de := range des {
-		if de.IsDir() {
+		// Skip dot-prefixed entries: these are Paladin's own scratch
+		// (e.g. .paladin-safety-* during/after a restore), never worlds.
+		if de.IsDir() && !strings.HasPrefix(de.Name(), ".") {
 			worlds = append(worlds, de.Name())
 		}
 	}
@@ -424,6 +427,7 @@ func cmdRestore(args []string) error {
 	}
 	p := &backup.RestorePayload{
 		Mgr: d.mgr, Selected: entry, WorldDir: d.worldDir,
+		SafetyRelocateDir: defSafetyHold, // relocate out of the save tree after success (§2)
 		ReadWorldGUID: func(ctx context.Context) (string, error) {
 			info, err := d.api.Info(ctx)
 			if err != nil {

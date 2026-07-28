@@ -29,8 +29,15 @@ type RestorePayload struct {
 	// ReadWorldGUID returns the live server's world GUID after restart
 	// (palapi Info().WorldGUID) for the identity VERIFY.
 	ReadWorldGUID func(ctx context.Context) (string, error)
+	// SafetyRelocateDir, if set, is where the pre-restore safety copy is
+	// moved AFTER the restore verifies healthy — Paladin's own root,
+	// outside the game tree (the "removable guest" principle, §2). The
+	// rename-aside itself always lands in a dot-scratch sibling first
+	// (atomicity needs same-filesystem); relocation happens last. If
+	// empty, the safety copy is left in the dot-scratch sibling.
+	SafetyRelocateDir string
 
-	safetyPath string // set once the rename-aside has happened
+	safetyPath string // current location of the safety copy
 }
 
 var _ maintain.Payload = (*RestorePayload)(nil)
@@ -55,7 +62,11 @@ func (p *RestorePayload) PreCheck(ctx context.Context) error {
 
 // Backup is the SAFETY-BACKUP step: rename the active world aside.
 func (p *RestorePayload) Backup(ctx context.Context) error {
-	p.safetyPath = p.WorldDir + ".paladin-safety-" + time.Now().UTC().Format("20060102T150405Z")
+	// Dot-prefixed so the world detector skips it (§6.9). Same parent dir
+	// as the world, so the rename is atomic on one filesystem.
+	parent := filepath.Dir(p.WorldDir)
+	base := filepath.Base(p.WorldDir)
+	p.safetyPath = filepath.Join(parent, ".paladin-safety-"+base+"-"+time.Now().UTC().Format("20060102T150405Z"))
 	if err := os.Rename(p.WorldDir, p.safetyPath); err != nil {
 		p.safetyPath = ""
 		return fmt.Errorf("rename-aside safety backup: %w", err)
@@ -116,10 +127,43 @@ func (p *RestorePayload) Verify(ctx context.Context) ([]string, error) {
 		issues = append(issues, fmt.Sprintf(
 			"world identity mismatch: server reports GUID %s, restored folder is %s — the server may not be serving the restored world", guid, want))
 	}
+	// Restore verified healthy → relocate the safety copy out of the game
+	// save tree into Paladin's own root ("removable guest", §2). This is
+	// housekeeping AFTER success, so a relocation error is a warning, not
+	// a failure — the restore already stands.
+	if p.SafetyRelocateDir != "" && p.safetyPath != "" {
+		if moved, err := relocate(p.safetyPath, p.SafetyRelocateDir); err != nil {
+			issues = append(issues, fmt.Sprintf(
+				"restored OK, but could not relocate the safety copy out of the save tree (%v); it remains at %s", err, p.safetyPath))
+		} else {
+			p.safetyPath = moved
+		}
+	}
 	issues = append(issues, fmt.Sprintf(
 		"restored from backup %s (%s, created %s); the pre-restore safety copy of the previous world is at %s",
 		p.Selected.ID, p.Selected.Trigger, p.Selected.Created.Format(time.RFC3339), p.safetyPath))
 	return issues, nil
+}
+
+// relocate moves src into dstDir, returning the new path. Atomic rename
+// when same-filesystem, else copy-then-delete (safe: only called after a
+// verified-healthy restore).
+func relocate(src, dstDir string) (string, error) {
+	if err := os.MkdirAll(dstDir, 0o750); err != nil {
+		return src, err
+	}
+	dst := filepath.Join(dstDir, filepath.Base(src))
+	if err := os.Rename(src, dst); err == nil {
+		return dst, nil
+	}
+	if err := copyDir(context.Background(), src, dst); err != nil {
+		os.RemoveAll(dst)
+		return src, err
+	}
+	if err := os.RemoveAll(src); err != nil {
+		return dst, fmt.Errorf("copied but could not remove original: %w", err)
+	}
+	return dst, nil
 }
 
 // Anchors names the recovery anchors (invariant I7).

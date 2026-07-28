@@ -279,6 +279,78 @@ func TestPreCheckRefusesCorruptBackupBeforeStopping(t *testing.T) {
 	}
 }
 
+func TestSafetyCopyRelocatesOutOfSaveTreeAndIsDotPrefixed(t *testing.T) {
+	saves := t.TempDir() // stands in for SaveGames/0
+	world := filepath.Join(saves, "GUID123")
+	makeWorld(t, world, "ORIGINAL")
+	m, _ := NewManager(t.TempDir())
+	b, _ := m.Create(context.Background(), world, TriggerManual)
+	makeWorld(t, world, "GRIEFED")
+
+	relocateDir := t.TempDir() // Paladin's own root, outside the save tree
+	p := &RestorePayload{
+		Mgr: m, Selected: b, WorldDir: world, SafetyRelocateDir: relocateDir,
+		ReadWorldGUID: func(context.Context) (string, error) { return "GUID123", nil },
+	}
+	out, err := engineFor(t).Run(context.Background(), "reloc-1", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != maintain.StatusSuccessWithWarnings {
+		t.Fatalf("want success_with_warnings, got %+v", out)
+	}
+	// The world is restored...
+	if readMarker(t, world) != "ORIGINAL" {
+		t.Fatal("world not restored")
+	}
+	// ...and the ONLY directory left in the save tree is the world itself.
+	// This is the regression: before the fix, a .paladin-safety-* sibling
+	// sat here and broke world detection ("found two worlds").
+	des, _ := os.ReadDir(saves)
+	var leftover []string
+	for _, de := range des {
+		if de.IsDir() {
+			leftover = append(leftover, de.Name())
+		}
+	}
+	if len(leftover) != 1 || leftover[0] != "GUID123" {
+		t.Fatalf("save tree must contain only the world after restore; found %v", leftover)
+	}
+	// The safety copy now lives in Paladin's root, holding the griefed world.
+	relDes, _ := os.ReadDir(relocateDir)
+	if len(relDes) != 1 {
+		t.Fatalf("safety copy should have relocated into Paladin's root; found %d entries", len(relDes))
+	}
+	if got := readMarker(t, filepath.Join(relocateDir, relDes[0].Name())); got != "GRIEFED" {
+		t.Fatalf("relocated safety copy should hold the pre-restore world, got %q", got)
+	}
+}
+
+func TestSafetyScratchIsDotPrefixedDuringCycle(t *testing.T) {
+	saves := t.TempDir()
+	world := filepath.Join(saves, "G")
+	makeWorld(t, world, "v1")
+	m, _ := NewManager(t.TempDir())
+	b, _ := m.Create(context.Background(), world, TriggerManual)
+	p := &RestorePayload{Mgr: m, Selected: b, WorldDir: world,
+		ReadWorldGUID: func(context.Context) (string, error) { return "G", nil }}
+	ctx := context.Background()
+	if err := p.PreCheck(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Backup(ctx); err != nil { // rename-aside
+		t.Fatal(err)
+	}
+	// The scratch sibling must be dot-prefixed so a detector skipping
+	// dotfiles won't mistake it for a world.
+	if !strings.HasPrefix(filepath.Base(p.safetyPath), ".") {
+		t.Fatalf("safety scratch must be dot-prefixed, got %s", filepath.Base(p.safetyPath))
+	}
+	if filepath.Dir(p.safetyPath) != saves {
+		t.Fatal("safety scratch must be a same-parent sibling (atomicity)")
+	}
+}
+
 func TestDiskCheck(t *testing.T) {
 	world := filepath.Join(t.TempDir(), "W")
 	makeWorld(t, world, "v1")
