@@ -63,6 +63,11 @@
 > (`AutoSaveSpan` → `autoSaveSpan`). palapi shipped and green against the
 > live server; /metrics shape captured (incl. undocumented basecampnum).
 >
+> **Revision 14 — 2026-07-28.** Backup strategy clarified: Paladin's own
+> backups are event-anchored only; the game's own time-based backups will
+> be SURFACED and managed (§6.8a), not duplicated by a Paladin scheduler.
+> §6.8a added as a distinct, roadmapped-but-not-yet-built feature.
+>
 > **Revision 13 — 2026-07-28.** First live commit AND restore succeeded
 > against the test box. New guiding principle: Paladin is a **removable
 > guest** (§2) — all its files under one root outside the game tree, a
@@ -710,16 +715,25 @@ player management is a core operator surface. **[decided]**
 > are now explicit features — a backup system without a restore path is
 > half a feature, exactly like ban without unban.
 
-**Backup side:**
+**Backup side — event-anchored (this is what §6.8 builds):** Paladin's own
+backups are tied to deliberate maintenance events, never a timer. Their
+value over the game's rolling backups is that they are *labelled and
+transactional*: "the world exactly as it was immediately before this
+specific change, verified complete before the change proceeded." That
+guarantee is what the game's undated 5-minute cadence cannot provide.
 - **Pre-commit backups** — every commit-and-restart cycle produces one
   (already in §6.3; unchanged). **[decided]**
 - **Pre-restore safety backups** — every restore backs up the current
   world first, so a restore is itself reversible (see workflow below).
   **[decided]**
-- **Scheduled backups** — periodic world-folder backups while running.
-  Whether a consistent hot copy requires a REST `save` + copy, or a brief
-  stop, is **[open — verify save-file consistency semantics on test box]**;
-  the safe default is `save` via REST, then copy.
+- **Scheduled backups — deliberately NOT a Paladin timer.** Palworld
+  already takes its own time-based rolling backups (`bIsUseBackupSaveData`,
+  default on: 5 saves @30s, 6 @10min, 12 @1h, 7 @1day). Building a second
+  Paladin scheduler would duplicate that and waste disk. Instead, the
+  "time-based backups" need is met by SURFACING the game's existing backups
+  (see §6.8a) — a separate feature. Paladin's own backups stay
+  event-anchored only (below). **[decided at revision 14; this reverses the
+  earlier "periodic world-folder backups" wording.]**
 - **Backup browser** — a UI list of all backups with timestamp, trigger
   (pre-commit / pre-restore / scheduled / manual), world name, size, and
   retention state. **[decided]**
@@ -746,6 +760,29 @@ One state machine, two workflows; build it once.
 8. **START** — start via the owned unit; wait for genuine readiness.
 9. **VERIFY** — confirm the server is serving the restored world (world
    ID / save timestamp readback where available) and report honestly.
+
+### 6.8a Surfacing Palworld's own backups (distinct feature — NOT YET BUILT)
+
+> Added at revision 14. This is a SEPARATE feature from §6.8's
+> event-anchored backups, explicitly on the roadmap but not built here.
+> Flagged now so it is developed deliberately, not stumbled into.
+
+Palworld maintains its own time-based rolling backups
+(`bIsUseBackupSaveData`) in a `backup/` folder within the save data,
+entirely outside Paladin's control. Rather than duplicate this with a
+Paladin scheduler (§6.8), Paladin will **surface and manage** the game's
+backups:
+- **Discover and list** the game's backups in the same browsable catalog
+  as Paladin's event-anchored ones, clearly distinguished by origin.
+- **Restore from** a game backup through the same verified, transactional
+  restore workflow (§6.8 / §6.9) — so the game's backups gain Paladin's
+  announce → stop → safety-copy → swap → verify safety.
+- Optionally **archive** select game backups out of the rolling set (the
+  game keeps only a fixed window; Paladin could preserve chosen ones).
+
+Scope note: this is **out of scope for the current build**. Event-anchored
+backups (§6.8) are complete; this is the next backup-related feature.
+**[decided in direction at revision 14; implementation deferred.]**
 
 ### 6.9 Shared maintenance state machine — invariants & rollback matrix
 
