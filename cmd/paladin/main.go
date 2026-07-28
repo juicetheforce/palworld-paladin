@@ -1,12 +1,516 @@
-// Command paladin is the entrypoint for Paladin, a self-hosted admin panel
-// for a single Palworld dedicated server. This file does wiring only; all
-// application logic lives under internal/ (see docs/DESIGN.md §5.4).
+// Command paladin — trial CLI wiring every internal package into live
+// maintenance cycles against a real server. This is the assembly step
+// before the web UI: webserv will call the same wiring.
+//
+// TRIAL-ONLY SCAFFOLDING NOTE: this CLI is expected to run under sudo on
+// the test box (systemctl needs root until the scoped grant ships, §5.2).
+// Files it writes would therefore land root-owned — and a root-owned ini
+// the palworld user cannot read is a subtle server-breaker. The CLI
+// captures the ini's owner up front and chowns everything it created back
+// afterward. The real deployment runs Paladin AS the service account
+// (Model A) and needs none of this.
+//
+// Usage (testbox defaults built in):
+//
+//	paladin status
+//	paladin backup create | list | prune --keep N
+//	paladin commit --set ExpRate=2 --set bEnableVoiceChat=true [--countdown 30]
+//	paladin restore --backup <id> [--countdown 30]
+//	paladin recover
 package main
 
-import "fmt"
+import (
+	"bufio"
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"time"
 
-var version = "0.0.0-dev"
+	"github.com/juicetheforce/palworld-paladin/internal/backup"
+	"github.com/juicetheforce/palworld-paladin/internal/maintain"
+	"github.com/juicetheforce/palworld-paladin/internal/palapi"
+	"github.com/juicetheforce/palworld-paladin/internal/settings"
+	"github.com/juicetheforce/palworld-paladin/internal/supervise"
+)
+
+var version = "0.1.0-trial"
+
+// defaults matching deploy/testbox/bootstrap-palworld-testbox.sh
+const (
+	defUnit      = "palserver.service"
+	defAPIURL    = "http://127.0.0.1:8212"
+	defCredsFile = "/home/palworld/palserver-credentials.txt"
+	defINI       = "/home/palworld/palserver/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini"
+	defSavesRoot = "/home/palworld/palserver/Pal/Saved/SaveGames/0"
+	defBackups   = "/home/palworld/paladin-backups"
+	defJournal   = "/home/palworld/paladin-journal"
+)
+
+type deps struct {
+	api      *palapi.Client
+	unit     *supervise.UnitController
+	fj       *maintain.FileJournal
+	mgr      *backup.Manager
+	keyList  *settings.KeyList
+	worldDir string
+	iniPath  string
+	own      ownership
+}
 
 func main() {
-	fmt.Printf("paladin %s — pre-alpha scaffold; see docs/DESIGN.md\n", version)
+	if len(os.Args) < 2 {
+		usage()
+		os.Exit(2)
+	}
+	cmd, args := os.Args[1], os.Args[2:]
+	var err error
+	switch cmd {
+	case "status":
+		err = cmdStatus(args)
+	case "backup":
+		err = cmdBackup(args)
+	case "commit":
+		err = cmdCommit(args)
+	case "restore":
+		err = cmdRestore(args)
+	case "recover":
+		err = cmdRecover(args)
+	case "version":
+		fmt.Println("paladin", version)
+	default:
+		usage()
+		os.Exit(2)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "ERROR:", err)
+		os.Exit(1)
+	}
+}
+
+func usage() {
+	fmt.Fprintln(os.Stderr, `paladin `+version+` — Palworld server maintenance (trial CLI)
+  status                         server, unit, and metrics at a glance
+  backup create|list|prune       manage the backup catalog
+  commit --set Key=Value ...     staged settings commit-and-restart cycle
+  restore --backup <id>          orchestrated world restore cycle
+  recover                        report a crash-interrupted cycle, if any`)
+}
+
+// ---- wiring -----------------------------------------------------------------
+
+func build() (*deps, error) {
+	d := &deps{iniPath: defINI}
+	pw := os.Getenv("PALWORLD_ADMIN_PASSWORD")
+	if pw == "" {
+		if b, err := os.ReadFile(defCredsFile); err == nil {
+			for _, ln := range strings.Split(string(b), "\n") {
+				if v, ok := strings.CutPrefix(strings.TrimSpace(ln), "AdminPassword: "); ok {
+					pw = v
+				}
+			}
+		}
+	}
+	if pw == "" {
+		return nil, fmt.Errorf("no admin password: set PALWORLD_ADMIN_PASSWORD or make %s readable", defCredsFile)
+	}
+	d.api = palapi.New(defAPIURL, pw)
+	d.unit = supervise.NewUnitController(defUnit)
+
+	// Detect the world folder — never assume (§7.4 ethos).
+	des, err := os.ReadDir(defSavesRoot)
+	if err != nil {
+		return nil, fmt.Errorf("list %s: %w", defSavesRoot, err)
+	}
+	var worlds []string
+	for _, de := range des {
+		if de.IsDir() {
+			worlds = append(worlds, de.Name())
+		}
+	}
+	if len(worlds) != 1 {
+		return nil, fmt.Errorf("expected exactly one world under %s, found %v", defSavesRoot, worlds)
+	}
+	d.worldDir = filepath.Join(defSavesRoot, worlds[0])
+
+	d.fj, err = maintain.NewFileJournal(defJournal)
+	if err != nil {
+		return nil, err
+	}
+	d.mgr, err = backup.NewManager(defBackups)
+	if err != nil {
+		return nil, err
+	}
+	d.keyList, err = settings.LoadKeyList()
+	if err != nil {
+		return nil, err
+	}
+	d.own = captureOwnership(d.iniPath)
+	return d, nil
+}
+
+// noopSusp: no daemon supervisor exists yet in the trial CLI; the systemd
+// unit's Restart=on-failure ignores deliberate stops, so cycles are safe.
+type noopSusp struct{}
+
+func (noopSusp) Suspend() {}
+func (noopSusp) Resume()  {}
+
+func engineFor(d *deps, countdown int) (*maintain.Engine, error) {
+	var ann []maintain.Announcement
+	if countdown > 0 {
+		ann = append(ann, maintain.Announcement{
+			Message: fmt.Sprintf("[Paladin] Server maintenance in %d seconds — please reach a safe spot.", countdown),
+			Wait:    time.Duration(countdown) * time.Second,
+		})
+	}
+	ann = append(ann, maintain.Announcement{Message: "[Paladin] Maintenance starting now.", Wait: 2 * time.Second})
+	return maintain.NewEngine(maintain.Config{
+		API: d.api, Unit: d.unit, Susp: noopSusp{}, Journal: d.fj,
+		OnEvent:       printEvent,
+		Announcements: ann,
+		DiskCheck:     backup.DiskCheckFunc(d.worldDir, 2.0),
+		StopDecider:   terminalStopDialog,
+	})
+}
+
+func printEvent(e maintain.Event) {
+	ts := e.Time.Format("15:04:05")
+	switch e.Kind {
+	case maintain.EventStepStarted:
+		fmt.Printf("%s  [%s] %-9s …\n", ts, e.Payload, e.Step)
+	case maintain.EventStepOK:
+		fmt.Printf("%s  [%s] %-9s ok\n", ts, e.Payload, e.Step)
+	case maintain.EventStepFailed:
+		fmt.Printf("%s  [%s] %-9s FAILED: %s\n", ts, e.Payload, e.Step, e.Detail)
+	case maintain.EventRolledBack:
+		fmt.Printf("%s  [%s] %-9s rolling back: %s\n", ts, e.Payload, e.Step, e.Detail)
+	case maintain.EventAwaitingOp:
+		fmt.Printf("%s  [%s] %-9s AWAITING OPERATOR\n", ts, e.Payload, e.Step)
+	case maintain.EventDoubleFault:
+		fmt.Printf("%s  [%s] %-9s DOUBLE FAULT: %s\n", ts, e.Payload, e.Step, e.Detail)
+	case maintain.EventCycleFinished:
+		fmt.Printf("%s  [%s] finished: %s\n", ts, e.Payload, e.Detail)
+	}
+}
+
+// terminalStopDialog is the §6.9 STOP escalation, terminal edition.
+func terminalStopDialog(ctx context.Context) (maintain.StopDecision, error) {
+	fmt.Println()
+	fmt.Println("The server didn't shut down within the grace window. It may be hung, or just slow.")
+	fmt.Println("The world was already saved at the start of this job, so a force kill will NOT lose")
+	fmt.Println("recent progress — it ends the process immediately instead of waiting.")
+	fmt.Println()
+	fmt.Println("  [k] Force kill and continue the job")
+	fmt.Println("  [c] Cancel the job (nothing on disk was touched; the server may need attention)")
+	fmt.Print("choice [k/c]: ")
+	sc := bufio.NewScanner(os.Stdin)
+	for sc.Scan() {
+		switch strings.ToLower(strings.TrimSpace(sc.Text())) {
+		case "k":
+			return maintain.DecisionForceKill, nil
+		case "c":
+			return maintain.DecisionCancel, nil
+		default:
+			fmt.Print("please answer k or c: ")
+		}
+	}
+	return maintain.DecisionCancel, sc.Err()
+}
+
+func printOutcome(out maintain.Outcome) {
+	fmt.Println()
+	fmt.Println("outcome:", out.Status)
+	if out.FailedStep != "" {
+		fmt.Println("at step:", out.FailedStep)
+	}
+	if out.Detail != "" {
+		fmt.Println("detail: ", out.Detail)
+	}
+	for _, is := range out.VerifyIssues {
+		fmt.Println("  •", is)
+	}
+	if len(out.Anchors) > 0 {
+		fmt.Println("recovery anchors:")
+		for _, a := range out.Anchors {
+			fmt.Println("  →", a)
+		}
+	}
+}
+
+func refuseIfUnclosed() error {
+	u, err := maintain.ReadUnclosed(defJournal)
+	if err != nil {
+		return err
+	}
+	if u != nil {
+		return fmt.Errorf("a previous cycle (%s, %s) was interrupted at step %s — run 'paladin recover' and resolve before starting a new cycle",
+			u.CycleID, u.Kind, u.LastStep)
+	}
+	return nil
+}
+
+// ---- commands ---------------------------------------------------------------
+
+func cmdStatus(args []string) error {
+	d, err := build()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	info, err := d.api.Info(ctx)
+	if err != nil {
+		return fmt.Errorf("REST: %w", err)
+	}
+	m, _ := d.api.Metrics(ctx)
+	p, err := d.unit.Show(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("server   %s  %q  world %s\n", info.Version, info.ServerName, info.WorldGUID)
+	fmt.Printf("unit     %s: %s/%s, memory %.1f MiB\n", defUnit, p.ActiveState, p.SubState,
+		float64(p.MemoryCurrent)/(1<<20))
+	if m != nil {
+		fmt.Printf("metrics  players %d/%d, bases %d, fps %.0f (avg %.1f), uptime %ds, day %d\n",
+			m.CurrentPlayerNum, m.MaxPlayerNum, m.BaseCampNum, m.ServerFPS, m.ServerFPSAverage,
+			m.Uptime, m.Days)
+	}
+	fmt.Printf("world    %s\n", d.worldDir)
+	entries, partials, _ := d.mgr.List()
+	fmt.Printf("backups  %d in catalog", len(entries))
+	if len(partials) > 0 {
+		fmt.Printf("  (%d PARTIAL leftovers from interrupted backups — inspect them)", len(partials))
+	}
+	fmt.Println()
+	return nil
+}
+
+func cmdBackup(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("backup: need create|list|prune")
+	}
+	d, err := build()
+	if err != nil {
+		return err
+	}
+	defer d.own.fixup(defBackups)
+	switch args[0] {
+	case "create":
+		fmt.Println("saving world via REST before copy …")
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if err := d.api.Save(ctx); err != nil {
+			return err
+		}
+		e, err := d.mgr.Create(ctx, d.worldDir, backup.TriggerManual)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("created %s (%.2f MiB)\n", e.ID, float64(e.TotalSize)/(1<<20))
+		return nil
+	case "list":
+		entries, partials, err := d.mgr.List()
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			fmt.Printf("%-40s %-12s %8.2f MiB  %s\n", e.ID, e.Trigger,
+				float64(e.TotalSize)/(1<<20), e.Created.Format(time.RFC3339))
+		}
+		for _, pp := range partials {
+			fmt.Println("PARTIAL (interrupted, inspect):", pp)
+		}
+		if len(entries) == 0 && len(partials) == 0 {
+			fmt.Println("no backups yet")
+		}
+		return nil
+	case "prune":
+		fs := flag.NewFlagSet("prune", flag.ContinueOnError)
+		keep := fs.Int("keep", 10, "backups to keep")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		deleted, err := d.mgr.Prune(*keep)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("pruned %d: %v\n", len(deleted), deleted)
+		return nil
+	}
+	return fmt.Errorf("backup: unknown subcommand %q", args[0])
+}
+
+type setFlags []string
+
+func (s *setFlags) String() string     { return strings.Join(*s, ",") }
+func (s *setFlags) Set(v string) error { *s = append(*s, v); return nil }
+
+func cmdCommit(args []string) error {
+	fs := flag.NewFlagSet("commit", flag.ContinueOnError)
+	var sets setFlags
+	fs.Var(&sets, "set", "Key=Value (repeatable)")
+	countdown := fs.Int("countdown", 30, "seconds of warning before stopping (0 = brief notice only)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if len(sets) == 0 {
+		return fmt.Errorf("commit: at least one --set Key=Value required")
+	}
+	if err := refuseIfUnclosed(); err != nil {
+		return err
+	}
+	d, err := build()
+	if err != nil {
+		return err
+	}
+	defer d.own.fixup(d.iniPath, d.iniPath+".paladin-prev", defBackups, defJournal)
+
+	staged := map[string]any{}
+	for _, kv := range sets {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok {
+			return fmt.Errorf("--set %q: want Key=Value", kv)
+		}
+		def, found := d.keyList.Lookup(k)
+		if !found {
+			return fmt.Errorf("--set %s: unknown key", k)
+		}
+		val, err := settings.ParseValue(def, v)
+		if err != nil {
+			return err
+		}
+		staged[def.Key] = val
+	}
+
+	p := &settings.CommitPayload{
+		KeyList: d.keyList, INIPath: d.iniPath, WorldDir: d.worldDir,
+		Staged:       staged,
+		WorldBackup:  backup.WorldBackupFunc(d.mgr, d.worldDir),
+		ReadSettings: d.api.Settings,
+		BackupAnchor: defBackups,
+	}
+	eng, err := engineFor(d, *countdown)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("commit cycle: %d staged key(s), %ds countdown\n", len(staged), *countdown)
+	out, err := eng.Run(context.Background(), cycleID("commit"), p)
+	printOutcome(out)
+	if err != nil && !errors.Is(err, maintain.ErrBusy) {
+		return err
+	}
+	return nil
+}
+
+func cmdRestore(args []string) error {
+	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
+	id := fs.String("backup", "", "backup id (from 'paladin backup list')")
+	countdown := fs.Int("countdown", 30, "seconds of warning before stopping")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *id == "" {
+		return fmt.Errorf("restore: --backup <id> required")
+	}
+	if err := refuseIfUnclosed(); err != nil {
+		return err
+	}
+	d, err := build()
+	if err != nil {
+		return err
+	}
+	defer d.own.fixup(defSavesRoot, defBackups, defJournal)
+
+	entry, err := d.mgr.Get(*id)
+	if err != nil {
+		return err
+	}
+	p := &backup.RestorePayload{
+		Mgr: d.mgr, Selected: entry, WorldDir: d.worldDir,
+		ReadWorldGUID: func(ctx context.Context) (string, error) {
+			info, err := d.api.Info(ctx)
+			if err != nil {
+				return "", err
+			}
+			return info.WorldGUID, nil
+		},
+	}
+	eng, err := engineFor(d, *countdown)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("restore cycle: backup %s (%s, %.2f MiB), %ds countdown\n",
+		entry.ID, entry.Trigger, float64(entry.TotalSize)/(1<<20), *countdown)
+	out, err := eng.Run(context.Background(), cycleID("restore"), p)
+	printOutcome(out)
+	if err != nil && !errors.Is(err, maintain.ErrBusy) {
+		return err
+	}
+	return nil
+}
+
+func cmdRecover(args []string) error {
+	u, err := maintain.ReadUnclosed(defJournal)
+	if err != nil {
+		return err
+	}
+	if u == nil {
+		fmt.Println("no interrupted cycle; journal is clean")
+		return nil
+	}
+	fmt.Printf("INTERRUPTED CYCLE: %s (%s)\n", u.CycleID, u.Kind)
+	fmt.Printf("last step in flight: %s\n", u.LastStep)
+	fmt.Println("journal entries:")
+	for _, e := range u.Entries {
+		fmt.Printf("  %s  %-12s %-10s %s\n", e.Time.Format(time.RFC3339), e.Event, e.Step, e.Detail)
+	}
+	fmt.Println()
+	fmt.Println("Nothing is resumed automatically (§6.9 I3). Inspect the anchors on disk")
+	fmt.Println("(pre-write ini copy, backups, any *.paladin-safety-* world folder), restore")
+	fmt.Println("by hand if needed, then delete " + filepath.Join(defJournal, "active.journal") +
+		" to acknowledge.")
+	return nil
+}
+
+func cycleID(kind string) string {
+	return kind + "-" + time.Now().UTC().Format("20060102T150405Z")
+}
+
+// ---- root-ownership fixup (trial-only, see file header) ---------------------
+
+type ownership struct {
+	uid, gid int
+	valid    bool
+}
+
+func captureOwnership(path string) ownership {
+	var st syscall.Stat_t
+	if err := syscall.Stat(path, &st); err != nil {
+		return ownership{}
+	}
+	return ownership{uid: int(st.Uid), gid: int(st.Gid), valid: true}
+}
+
+// fixup chowns each path (recursively for directories) back to the
+// captured owner. Best-effort: a fixup problem is warned, never fatal.
+func (o ownership) fixup(paths ...string) {
+	if !o.valid || os.Geteuid() != 0 {
+		return
+	}
+	for _, p := range paths {
+		filepath.WalkDir(p, func(path string, _ os.DirEntry, err error) error {
+			if err != nil {
+				return nil // path may simply not exist; fine
+			}
+			if err := os.Chown(path, o.uid, o.gid); err != nil {
+				fmt.Fprintf(os.Stderr, "warn: chown %s: %v\n", path, err)
+			}
+			return nil
+		})
+	}
 }
