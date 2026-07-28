@@ -7,6 +7,8 @@
 # Frontend
 web/node_modules/
 web/dist/
+# NOTE: internal/webserv/dist/ is the EMBEDDED built bundle and IS committed
+# (so deployment needs no npm). Do not add a broad "dist/" ignore rule.
 
 # Local state
 *.db

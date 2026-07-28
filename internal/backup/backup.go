@@ -179,6 +179,16 @@ func (m *Manager) Prune(keep int) (deleted []string, err error) {
 	return deleted, nil
 }
 
+// Count returns the number of finalized backups in the catalog (for the
+// dashboard card). Partial/interrupted dirs are not counted.
+func (m *Manager) Count() (int, error) {
+	entries, _, err := m.List()
+	if err != nil {
+		return 0, err
+	}
+	return len(entries), nil
+}
+
 // WorldBackupFunc adapts a Manager to the commit payload's injected
 // BACKUP step (settings.CommitPayload.WorldBackup).
 func WorldBackupFunc(m *Manager, worldDir string) func(context.Context) error {

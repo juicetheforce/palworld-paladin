@@ -23,6 +23,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,6 +34,7 @@ import (
 	"github.com/juicetheforce/palworld-paladin/internal/palapi"
 	"github.com/juicetheforce/palworld-paladin/internal/settings"
 	"github.com/juicetheforce/palworld-paladin/internal/supervise"
+	"github.com/juicetheforce/palworld-paladin/internal/webserv"
 )
 
 var version = "0.1.0-trial"
@@ -47,6 +49,8 @@ const (
 	defBackups    = "/home/palworld/paladin-backups"
 	defJournal    = "/home/palworld/paladin-journal"
 	defSafetyHold = "/home/palworld/paladin-safety" // relocated pre-restore copies live here
+	defAuthFile   = "/home/palworld/paladin-config/auth.json"
+	defWebAddr    = "127.0.0.1:8080"
 )
 
 type deps struct {
@@ -77,6 +81,8 @@ func main() {
 		err = cmdRestore(args)
 	case "recover":
 		err = cmdRecover(args)
+	case "serve":
+		err = cmdServe(args)
 	case "version":
 		fmt.Println("paladin", version)
 	default:
@@ -95,7 +101,8 @@ func usage() {
   backup create|list|prune       manage the backup catalog
   commit --set Key=Value ...     staged settings commit-and-restart cycle
   restore --backup <id>          orchestrated world restore cycle
-  recover                        report a crash-interrupted cycle, if any`)
+  recover                        report a crash-interrupted cycle, if any
+  serve [--addr host:port]       run the web UI (default 127.0.0.1:8080)`)
 }
 
 // ---- wiring -----------------------------------------------------------------
@@ -478,4 +485,34 @@ func cmdRecover(args []string) error {
 
 func cycleID(kind string) string {
 	return kind + "-" + time.Now().UTC().Format("20060102T150405Z")
+}
+
+// cmdServe runs Paladin's web UI. Read-only dashboard slice: auth +
+// /api/status over the embedded React bundle (DESIGN.md §6.6).
+func cmdServe(args []string) error {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	addr := fs.String("addr", defWebAddr, "listen address (host:port); default is localhost-only")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	d, err := build()
+	if err != nil {
+		return err
+	}
+	auth, err := webserv.LoadAuthStore(defAuthFile)
+	if err != nil {
+		return err
+	}
+	srv := webserv.New(webserv.Config{
+		Auth:     auth,
+		Sessions: webserv.NewSessionStore(12 * time.Hour),
+		Status:   d.api,
+		Backups:  d.mgr,
+		Static:   webserv.Assets(),
+	})
+	if auth.NeedsSetup() {
+		fmt.Println("First run: open the web UI to create your admin password.")
+	}
+	fmt.Printf("Paladin web UI on http://%s  (LAN/localhost only — do not expose publicly)\n", *addr)
+	return http.ListenAndServe(*addr, srv.Handler())
 }
