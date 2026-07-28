@@ -206,20 +206,24 @@ func (e *Engine) run(ctx context.Context, id string, p Payload) Outcome {
 	}
 
 	// ---- VERIFY: report honestly, never auto-rollback ----
-	issues, verr := p.Verify(ctx)
+	res, verr := p.Verify(ctx)
 	if verr != nil {
-		issues = append(issues, "verify itself errored: "+verr.Error())
+		// A verify that couldn't run is a warning (we can't confirm), not
+		// a mere note.
+		res.Warnings = append(res.Warnings, "verify itself errored: "+verr.Error())
 	}
-	if len(issues) > 0 {
-		e.cfg.Journal.StepFailed(id, string(StepVerify), fmt.Sprintf("%d issue(s)", len(issues)))
-		e.emit(id, p, EventStepFailed, StepVerify, fmt.Sprintf("%d issue(s) — reported, not rolled back", len(issues)))
+	if len(res.Warnings) > 0 {
+		e.cfg.Journal.StepFailed(id, string(StepVerify), fmt.Sprintf("%d warning(s)", len(res.Warnings)))
+		e.emit(id, p, EventStepFailed, StepVerify, fmt.Sprintf("%d warning(s) — reported, not rolled back", len(res.Warnings)))
 		return Outcome{Status: StatusSuccessWithWarnings, FailedStep: StepVerify,
-			Detail: "applied and running; verify reported issues", VerifyIssues: issues,
-			Anchors: p.Anchors()}
+			Detail: "applied and running; verify reported warnings", VerifyIssues: res.Warnings,
+			VerifyNotes: res.Notes, Anchors: p.Anchors()}
 	}
+	// Only informational notes (or nothing) → clean success.
 	e.cfg.Journal.StepOK(id, string(StepVerify))
 	e.emit(id, p, EventStepOK, StepVerify, "")
-	return Outcome{Status: StatusSuccess, Detail: "cycle completed; all changes verified"}
+	return Outcome{Status: StatusSuccess, VerifyNotes: res.Notes,
+		Detail: "cycle completed; all changes verified"}
 }
 
 func (e *Engine) startAndWait(ctx context.Context) error {

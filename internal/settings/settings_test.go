@@ -216,22 +216,29 @@ func TestVerifyHonesty(t *testing.T) {
 			"autoSaveSpan": 60.0, "ExpRate": 2.0, "bEnableVoiceChat": false,
 		}, nil
 	}
-	issues, err := p.Verify(context.Background())
+	res, err := p.Verify(context.Background())
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
-	joined := strings.Join(issues, "\n")
-	if strings.Contains(joined, "AutoSaveSpan: readback shows") {
-		t.Fatalf("case-insensitive match failed — false 'didn't apply' on AutoSaveSpan:\n%s", joined)
+	warns := strings.Join(res.Warnings, "\n")
+	notes := strings.Join(res.Notes, "\n")
+	if strings.Contains(warns, "AutoSaveSpan: readback shows") {
+		t.Fatalf("case-insensitive match failed — false 'didn't apply' on AutoSaveSpan:\n%s", warns)
 	}
-	if !strings.Contains(joined, "bEnableVoiceChat: readback shows false") {
-		t.Fatalf("real mismatch must be reported:\n%s", joined)
+	// A real mismatch is a WARNING.
+	if !strings.Contains(warns, "bEnableVoiceChat: readback shows false") {
+		t.Fatalf("real mismatch must be a warning:\n%s", warns)
 	}
-	if !strings.Contains(joined, "AdminPassword: applied — not verifiable") {
-		t.Fatalf("rest_readback:false key must report not-verifiable, not failure:\n%s", joined)
+	// Not-verifiable password is a NOTE, not a warning.
+	if !strings.Contains(notes, "AdminPassword: applied — not verifiable") {
+		t.Fatalf("rest_readback:false key must be an informational note:\n%s", notes)
 	}
-	if !strings.Contains(joined, "note") {
-		t.Fatalf("gotcha context must be attached to changed keys:\n%s", joined)
+	if strings.Contains(warns, "AdminPassword") {
+		t.Fatalf("not-verifiable password must NOT be a warning:\n%s", warns)
+	}
+	// Gotcha context is a NOTE.
+	if !strings.Contains(notes, "note") {
+		t.Fatalf("gotcha context must be an informational note:\n%s", notes)
 	}
 }
 
@@ -246,9 +253,9 @@ func TestWorldOptionSavWarningSurfaces(t *testing.T) {
 	p.ReadSettings = func(context.Context) (map[string]any, error) {
 		return map[string]any{"ExpRate": 2.0, "autoSaveSpan": 60.0, "bEnableVoiceChat": true}, nil
 	}
-	issues, _ := p.Verify(context.Background())
-	if !strings.Contains(strings.Join(issues, "\n"), "WorldOption.sav exists") {
-		t.Fatalf("WorldOption.sav warning must surface in verify: %v", issues)
+	res, _ := p.Verify(context.Background())
+	if !strings.Contains(strings.Join(res.Warnings, "\n"), "WorldOption.sav exists") {
+		t.Fatalf("WorldOption.sav must surface as a warning: %v", res.Warnings)
 	}
 }
 
@@ -291,10 +298,13 @@ func TestCommitThroughRealEngine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	// AdminPassword is staged, so the not-verifiable note (plus gotchas)
-	// makes this SuccessWithWarnings — the honest outcome.
-	if out.Status != maintain.StatusSuccessWithWarnings {
-		t.Fatalf("want success_with_warnings, got %+v", out)
+	// AdminPassword staged → not-verifiable NOTE; ExpRate/voice have no
+	// mismatch. With only notes (no warnings), this is clean SUCCESS now.
+	if out.Status != maintain.StatusSuccess {
+		t.Fatalf("want success (notes only, no warnings), got %+v", out)
+	}
+	if len(out.VerifyNotes) == 0 {
+		t.Fatal("expected informational notes (password not-verifiable)")
 	}
 	b, _ := os.ReadFile(iniPath)
 	if !strings.Contains(string(b), "ExpRate=2.000000") {

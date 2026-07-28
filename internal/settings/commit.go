@@ -126,36 +126,43 @@ func (p *CommitPayload) RollbackApply(ctx context.Context) error {
 //   - rest_readback:false keys report "applied — not verifiable"
 //   - gotcha context is attached to changed keys
 //   - WorldOption.sav warnings from PreCheck surface here
-func (p *CommitPayload) Verify(ctx context.Context) ([]string, error) {
+func (p *CommitPayload) Verify(ctx context.Context) (maintain.VerifyResult, error) {
+	var res maintain.VerifyResult
+	// PreCheck's WorldOption.sav caution is actionable (a staged key may
+	// silently not take on this world) → warning.
+	res.Warnings = append(res.Warnings, p.warnings...)
+
 	live, err := p.ReadSettings(ctx)
 	if err != nil {
-		return p.warnings, fmt.Errorf("settings readback failed: %w", err)
+		return res, fmt.Errorf("settings readback failed: %w", err)
 	}
 	lower := make(map[string]any, len(live))
 	for k, v := range live {
 		lower[strings.ToLower(k)] = v
 	}
 
-	issues := append([]string{}, p.warnings...)
 	for key, want := range p.Staged {
 		def, _ := p.KeyList.Lookup(key)
 		if !def.ReadbackVerifiable() {
-			issues = append(issues, fmt.Sprintf(
+			// Informational: applied, just not confirmable by readback.
+			res.Notes = append(res.Notes, fmt.Sprintf(
 				"%s: applied — not verifiable via readback (the API never echoes this key); the file is authoritative", def.Key))
-			continue
+		} else {
+			got, present := lower[strings.ToLower(def.Key)]
+			switch {
+			case !present:
+				res.Warnings = append(res.Warnings, fmt.Sprintf("%s: not present in readback — cannot confirm", def.Key))
+			case !valuesMatch(def, want, got):
+				res.Warnings = append(res.Warnings, fmt.Sprintf("%s: readback shows %v, expected %v — value did not take", def.Key, got, want))
+			}
 		}
-		got, present := lower[strings.ToLower(def.Key)]
-		switch {
-		case !present:
-			issues = append(issues, fmt.Sprintf("%s: not present in readback — cannot confirm", def.Key))
-		case !valuesMatch(def, want, got):
-			issues = append(issues, fmt.Sprintf("%s: readback shows %v, expected %v — value did not take", def.Key, got, want))
-		}
+		// Gotcha context is informational — it explains expected in-game
+		// behavior (e.g. level-gated cap), it is not a failure.
 		if def.Gotcha != nil {
-			issues = append(issues, fmt.Sprintf("%s (note): %s", def.Key, *def.Gotcha))
+			res.Notes = append(res.Notes, fmt.Sprintf("%s (note): %s", def.Key, *def.Gotcha))
 		}
 	}
-	return issues, nil
+	return res, nil
 }
 
 // valuesMatch compares a staged value with a readback value, tolerating

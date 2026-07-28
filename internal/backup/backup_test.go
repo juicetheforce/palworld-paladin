@@ -196,9 +196,13 @@ func TestFullRestoreThroughEngine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	// Restore always carries the informational safety-copy note.
-	if out.Status != maintain.StatusSuccessWithWarnings {
-		t.Fatalf("want success_with_warnings, got %+v", out)
+	// The safety-copy line is now an informational NOTE, so a clean
+	// restore (identity matches) reports as SUCCESS, not warnings.
+	if out.Status != maintain.StatusSuccess {
+		t.Fatalf("want success, got %+v", out)
+	}
+	if len(out.VerifyNotes) == 0 {
+		t.Fatal("restore should carry the informational safety-copy note")
 	}
 	if readMarker(t, world) != "GOOD" {
 		t.Fatal("world was not restored from the backup")
@@ -225,10 +229,10 @@ func TestRestoreVerifyFlagsWrongWorldIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	if out.Status != maintain.StatusSuccessWithWarnings {
-		t.Fatalf("want warnings, got %+v", out)
+		t.Fatalf("want success_with_warnings, got %+v", out)
 	}
 	if !strings.Contains(strings.Join(out.VerifyIssues, "\n"), "world identity mismatch") {
-		t.Fatalf("identity mismatch must be reported: %v", out.VerifyIssues)
+		t.Fatalf("identity mismatch must be a warning: %v", out.VerifyIssues)
 	}
 }
 
@@ -296,8 +300,8 @@ func TestSafetyCopyRelocatesOutOfSaveTreeAndIsDotPrefixed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Status != maintain.StatusSuccessWithWarnings {
-		t.Fatalf("want success_with_warnings, got %+v", out)
+	if out.Status != maintain.StatusSuccess {
+		t.Fatalf("want success (note only), got %+v", out)
 	}
 	// The world is restored...
 	if readMarker(t, world) != "ORIGINAL" {

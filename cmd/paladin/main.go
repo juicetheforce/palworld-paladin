@@ -229,8 +229,11 @@ func printOutcome(out maintain.Outcome) {
 	if out.Detail != "" {
 		fmt.Println("detail: ", out.Detail)
 	}
-	for _, is := range out.VerifyIssues {
-		fmt.Println("  •", is)
+	for _, w := range out.VerifyIssues {
+		fmt.Println("  ⚠ ", w)
+	}
+	for _, n := range out.VerifyNotes {
+		fmt.Println("  ℹ ", n)
 	}
 	if len(out.Anchors) > 0 {
 		fmt.Println("recovery anchors:")

@@ -116,15 +116,16 @@ func (p *RestorePayload) RollbackApply(ctx context.Context) error {
 // Verify confirms the live server is serving the restored world: the
 // world GUID reported by /info must equal the restored folder's name
 // (they are the same identifier — verified on the test box).
-func (p *RestorePayload) Verify(ctx context.Context) ([]string, error) {
+func (p *RestorePayload) Verify(ctx context.Context) (maintain.VerifyResult, error) {
+	var res maintain.VerifyResult
 	guid, err := p.ReadWorldGUID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("world identity readback failed: %w", err)
+		return res, fmt.Errorf("world identity readback failed: %w", err)
 	}
 	want := filepath.Base(filepath.Clean(p.WorldDir))
-	var issues []string
 	if guid != want {
-		issues = append(issues, fmt.Sprintf(
+		// Actionable: the server may not be serving what we restored.
+		res.Warnings = append(res.Warnings, fmt.Sprintf(
 			"world identity mismatch: server reports GUID %s, restored folder is %s — the server may not be serving the restored world", guid, want))
 	}
 	// Restore verified healthy → relocate the safety copy out of the game
@@ -133,16 +134,20 @@ func (p *RestorePayload) Verify(ctx context.Context) ([]string, error) {
 	// a failure — the restore already stands.
 	if p.SafetyRelocateDir != "" && p.safetyPath != "" {
 		if moved, err := relocate(p.safetyPath, p.SafetyRelocateDir); err != nil {
-			issues = append(issues, fmt.Sprintf(
+			// A relocation failure IS actionable (a Paladin artifact is
+			// left in the save tree) — warning, not note.
+			res.Warnings = append(res.Warnings, fmt.Sprintf(
 				"restored OK, but could not relocate the safety copy out of the save tree (%v); it remains at %s", err, p.safetyPath))
 		} else {
 			p.safetyPath = moved
 		}
 	}
-	issues = append(issues, fmt.Sprintf(
+	// Purely informational: a receipt of what was restored and where the
+	// reversible safety copy lives.
+	res.Notes = append(res.Notes, fmt.Sprintf(
 		"restored from backup %s (%s, created %s); the pre-restore safety copy of the previous world is at %s",
 		p.Selected.ID, p.Selected.Trigger, p.Selected.Created.Format(time.RFC3339), p.safetyPath))
-	return issues, nil
+	return res, nil
 }
 
 // relocate moves src into dstDir, returning the new path. Atomic rename

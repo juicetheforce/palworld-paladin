@@ -103,12 +103,13 @@ func (m *memJournal) Close(_, outcome, _ string) error {
 }
 
 type fakePayload struct {
-	log          *[]string
-	failPreCheck bool
-	failBackup   bool
-	failApply    bool
-	failRollback bool
-	verifyIssues []string
+	log            *[]string
+	failPreCheck   bool
+	failBackup     bool
+	failApply      bool
+	failRollback   bool
+	verifyWarnings []string
+	verifyNotes    []string
 }
 
 func (p *fakePayload) Name() string { return "test" }
@@ -140,9 +141,9 @@ func (p *fakePayload) RollbackApply(context.Context) error {
 	}
 	return nil
 }
-func (p *fakePayload) Verify(context.Context) ([]string, error) {
+func (p *fakePayload) Verify(context.Context) (VerifyResult, error) {
 	*p.log = append(*p.log, "p.verify")
-	return p.verifyIssues, nil
+	return VerifyResult{Warnings: p.verifyWarnings, Notes: p.verifyNotes}, nil
 }
 func (p *fakePayload) Anchors() []string { return []string{"/backups/pre", "/tmp/ini.orig"} }
 
@@ -429,7 +430,7 @@ func TestRollbackFailureIsDoubleFaultHalt(t *testing.T) {
 
 func TestVerifyIssuesReportedNeverRolledBack(t *testing.T) {
 	r := newRig()
-	r.payload.verifyIssues = []string{"BaseCampMaxNumInGuild: applied but level-gated"}
+	r.payload.verifyWarnings = []string{"BaseCampMaxNumInGuild: applied but level-gated"}
 	out := r.run(t)
 	if out.Status != StatusSuccessWithWarnings {
 		t.Fatalf("want success_with_warnings, got %+v", out)

@@ -45,12 +45,28 @@ type Payload interface {
 	// failure here is a double fault and halts all automation.
 	RollbackApply(ctx context.Context) error
 	// Verify runs after a healthy START: settings readback for a commit,
-	// world-identity check for a restore. Issues are reported, never
-	// auto-rolled-back (§6.9 matrix, VERIFY rows).
-	Verify(ctx context.Context) (issues []string, err error)
+	// world-identity check for a restore. Results are reported, never
+	// auto-rolled-back (§6.9 matrix, VERIFY rows). Warnings and Notes are
+	// distinct: a Warning is something the operator may need to act on (a
+	// value didn't take, an override may apply); a Note is purely
+	// informational (where the safety copy landed). A clean cycle with
+	// only Notes is a SUCCESS, not a warning state.
+	Verify(ctx context.Context) (VerifyResult, error)
 	// Anchors returns the absolute paths of the recovery anchors for
 	// failure reports (invariant I7).
 	Anchors() []string
+}
+
+// VerifyResult separates actionable warnings from informational notes so
+// a healthy cycle whose only output is an FYI (e.g. "safety copy is at X")
+// reports as clean success rather than a scary "VERIFY FAILED".
+type VerifyResult struct {
+	// Warnings: the operator may need to act (value didn't take, override
+	// may apply, identity mismatch). Non-empty → SuccessWithWarnings.
+	Warnings []string
+	// Notes: informational only (safety-copy location, applied context).
+	// Never affect the outcome status.
+	Notes []string
 }
 
 // GameAPI is the slice of the Palworld REST client the engine needs.
@@ -172,7 +188,8 @@ type Outcome struct {
 	Status       Status
 	FailedStep   Step     // zero for clean success
 	Detail       string   // human-readable cause
-	VerifyIssues []string // populated for SuccessWithWarnings
+	VerifyIssues []string // actionable warnings (populated for SuccessWithWarnings)
+	VerifyNotes  []string // informational notes (present on any successful cycle)
 	Anchors      []string // named on failure outcomes (invariant I7)
 }
 
