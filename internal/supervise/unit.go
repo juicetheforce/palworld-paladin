@@ -25,6 +25,20 @@ func (ExecRunner) Run(ctx context.Context, name string, args ...string) (string,
 	return string(out), err
 }
 
+// SudoRunner prefixes every command with "sudo -n" (non-interactive).
+// Model A (DESIGN.md §5.2): Paladin runs AS the unprivileged service
+// account and holds ONE narrowly-scoped sudoers grant permitting exactly
+// `systemctl start|stop|restart|kill|show|is-active <its unit>` and
+// nothing else. All file operations run natively as the owner (no sudo,
+// no chown). This is the single privilege exception in the design.
+type SudoRunner struct{}
+
+func (SudoRunner) Run(ctx context.Context, name string, args ...string) (string, error) {
+	full := append([]string{"-n", name}, args...)
+	out, err := exec.CommandContext(ctx, "sudo", full...).CombinedOutput()
+	return string(out), err
+}
+
 // UnitController owns exactly one systemd unit (the game server's,
 // authored by Paladin — DESIGN.md §6.1) and controls it via systemctl.
 type UnitController struct {
@@ -33,9 +47,16 @@ type UnitController struct {
 }
 
 // NewUnitController returns a controller for the named unit using the
-// real ExecRunner.
+// real ExecRunner (for when Paladin already runs as root, or in tests).
 func NewUnitController(unit string) *UnitController {
 	return &UnitController{Unit: unit, Runner: ExecRunner{}}
+}
+
+// NewScopedUnitController returns a controller that invokes systemctl via
+// the scoped sudoers grant — the Model A path where Paladin runs as the
+// unprivileged service account (DESIGN.md §5.2).
+func NewScopedUnitController(unit string) *UnitController {
+	return &UnitController{Unit: unit, Runner: SudoRunner{}}
 }
 
 func (u *UnitController) systemctl(ctx context.Context, args ...string) (string, error) {

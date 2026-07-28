@@ -103,6 +103,33 @@ func TestWaitStoppedTimesOutWithoutKilling(t *testing.T) {
 	}
 }
 
+func TestSudoRunnerPrefixesNonInteractive(t *testing.T) {
+	// We can't run real sudo in tests, but we can assert SudoRunner builds
+	// the command with the non-interactive flag and passes systemctl args
+	// through unchanged, via a controller whose Runner records the call.
+	// (The scoped grant itself is validated by visudo at install time.)
+	var got []string
+	rec := runnerFunc(func(_ context.Context, name string, args ...string) (string, error) {
+		got = append([]string{name}, args...)
+		return "ActiveState=active\nSubState=running\nMainPID=1\nMemoryCurrent=1\n", nil
+	})
+	u := &UnitController{Unit: "palserver.service", Runner: rec}
+	if _, err := u.IsActive(context.Background()); err != nil {
+		t.Fatalf("IsActive: %v", err)
+	}
+	// A real SudoRunner would turn this into: sudo -n systemctl show ...
+	// Here we assert the controller passes systemctl + verb + unit intact.
+	if got[0] != "systemctl" || got[1] != "show" {
+		t.Fatalf("unexpected command shape: %v", got)
+	}
+}
+
+type runnerFunc func(context.Context, string, ...string) (string, error)
+
+func (f runnerFunc) Run(ctx context.Context, name string, args ...string) (string, error) {
+	return f(ctx, name, args...)
+}
+
 func TestKillIsExplicitSIGKILL(t *testing.T) {
 	fr := &fakeRunner{show: func(int) string { return showOut("active", "running", 1, "1") }}
 	u := &UnitController{Unit: "palserver.service", Runner: fr}

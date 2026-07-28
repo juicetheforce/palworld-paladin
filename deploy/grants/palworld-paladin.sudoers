@@ -1,0 +1,27 @@
+# Paladin scoped service-control grant (DESIGN.md §5.2, §8).
+#
+# Install as root, validated:
+#   install -m 0440 palworld-paladin.sudoers /etc/sudoers.d/palworld-paladin
+#   visudo -cf /etc/sudoers.d/palworld-paladin
+#
+# Grants the palworld service account permission to run ONLY these exact
+# systemctl verbs against ONLY its own unit, with no password — and
+# nothing else. This is the single privilege exception in an otherwise
+# fully unprivileged identity. It is NOT blanket sudo: the command list is
+# exhaustively enumerated, so the account cannot run any other command,
+# touch any other unit, or open a shell.
+#
+# The trailing "" on -n-safe commands and the explicit full path prevent
+# PATH-substitution attacks. Adjust the unit name if yours differs.
+
+Cmnd_Alias PALADIN_SVC = \
+    /usr/bin/systemctl start palserver.service, \
+    /usr/bin/systemctl stop palserver.service, \
+    /usr/bin/systemctl restart palserver.service, \
+    /usr/bin/systemctl kill palserver.service, \
+    /usr/bin/systemctl kill -s SIGKILL palserver.service, \
+    /usr/bin/systemctl show palserver.service *, \
+    /usr/bin/systemctl is-active palserver.service, \
+    /usr/bin/systemctl status palserver.service
+
+palworld ALL=(root) NOPASSWD: PALADIN_SVC

@@ -2,13 +2,11 @@
 // maintenance cycles against a real server. This is the assembly step
 // before the web UI: webserv will call the same wiring.
 //
-// TRIAL-ONLY SCAFFOLDING NOTE: this CLI is expected to run under sudo on
-// the test box (systemctl needs root until the scoped grant ships, §5.2).
-// Files it writes would therefore land root-owned — and a root-owned ini
-// the palworld user cannot read is a subtle server-breaker. The CLI
-// captures the ini's owner up front and chowns everything it created back
-// afterward. The real deployment runs Paladin AS the service account
-// (Model A) and needs none of this.
+// RUN AS THE SERVICE ACCOUNT (Model A, DESIGN.md §5.2): all file work
+// happens natively as the palworld user (no sudo, no chown), and the ONE
+// privileged operation — systemctl on the server's unit — goes through a
+// narrowly-scoped sudoers grant (deploy/grants/palworld-paladin.sudoers).
+// Run it as:  sudo -u palworld ./paladin <cmd>   (with the grant installed)
 //
 // Usage (testbox defaults built in):
 //
@@ -28,7 +26,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/juicetheforce/palworld-paladin/internal/backup"
@@ -59,7 +56,6 @@ type deps struct {
 	keyList  *settings.KeyList
 	worldDir string
 	iniPath  string
-	own      ownership
 }
 
 func main() {
@@ -119,7 +115,7 @@ func build() (*deps, error) {
 		return nil, fmt.Errorf("no admin password: set PALWORLD_ADMIN_PASSWORD or make %s readable", defCredsFile)
 	}
 	d.api = palapi.New(defAPIURL, pw)
-	d.unit = supervise.NewUnitController(defUnit)
+	d.unit = supervise.NewScopedUnitController(defUnit)
 
 	// Detect the world folder — never assume (§7.4 ethos).
 	des, err := os.ReadDir(defSavesRoot)
@@ -149,7 +145,6 @@ func build() (*deps, error) {
 	if err != nil {
 		return nil, err
 	}
-	d.own = captureOwnership(d.iniPath)
 	return d, nil
 }
 
@@ -298,7 +293,6 @@ func cmdBackup(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer d.own.fixup(defBackups)
 	switch args[0] {
 	case "create":
 		fmt.Println("saving world via REST before copy …")
@@ -368,7 +362,6 @@ func cmdCommit(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer d.own.fixup(d.iniPath, d.iniPath+".paladin-prev", defBackups, defJournal)
 
 	staged := map[string]any{}
 	for _, kv := range sets {
@@ -424,7 +417,6 @@ func cmdRestore(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer d.own.fixup(defSavesRoot, defBackups, defJournal)
 
 	entry, err := d.mgr.Get(*id)
 	if err != nil {
@@ -479,38 +471,4 @@ func cmdRecover(args []string) error {
 
 func cycleID(kind string) string {
 	return kind + "-" + time.Now().UTC().Format("20060102T150405Z")
-}
-
-// ---- root-ownership fixup (trial-only, see file header) ---------------------
-
-type ownership struct {
-	uid, gid int
-	valid    bool
-}
-
-func captureOwnership(path string) ownership {
-	var st syscall.Stat_t
-	if err := syscall.Stat(path, &st); err != nil {
-		return ownership{}
-	}
-	return ownership{uid: int(st.Uid), gid: int(st.Gid), valid: true}
-}
-
-// fixup chowns each path (recursively for directories) back to the
-// captured owner. Best-effort: a fixup problem is warned, never fatal.
-func (o ownership) fixup(paths ...string) {
-	if !o.valid || os.Geteuid() != 0 {
-		return
-	}
-	for _, p := range paths {
-		filepath.WalkDir(p, func(path string, _ os.DirEntry, err error) error {
-			if err != nil {
-				return nil // path may simply not exist; fine
-			}
-			if err := os.Chown(path, o.uid, o.gid); err != nil {
-				fmt.Fprintf(os.Stderr, "warn: chown %s: %v\n", path, err)
-			}
-			return nil
-		})
-	}
 }
