@@ -202,10 +202,10 @@ function Dashboard() {
           unit={`/ ${st.max_players}`} sub={`${st.bases} bases · day ${st.days}`} />
         <StatCard className="span4" label="Uptime" value={formatUptime(st.uptime_sec)} sub="since last start" />
 
-        <div className="card span8">
+        <div className="card span4">
           <div className="card-label">Server</div>
           <div className="server-name">{st.server_name || "—"}</div>
-          <div className="server-desc">{st.description || "No description set."}</div>
+          <div className="server-desc clamp3">{st.description || "No description set."}</div>
           <div className="server-meta">
             <Meta k="Version" v={st.version || "—"} />
             <Meta k="World GUID" v={st.world_guid ? st.world_guid.slice(0, 12) + "…" : "—"} />

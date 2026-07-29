@@ -121,3 +121,12 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .net-fig { font-size: 22px; font-weight: 650; display: flex; align-items: baseline; gap: 6px; }
 .net-arrow { font-size: 18px; }
 .net-lbl { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.5px; margin-left: 2px; }
+
+/* Clamp a description to 3 lines with a graceful cutoff, so the Server
+   card stays a predictable height regardless of description length. */
+.clamp3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
