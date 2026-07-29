@@ -19,6 +19,29 @@ export interface StatusResponse {
 
 export type SessionState = "needs_setup" | "needs_login" | "authenticated";
 
+export interface HostSnapshot {
+  time: string;
+  cpu_model: string;
+  cpu_cores: number;
+  cpu_mhz: number;
+  cpu_usage: number;
+  cpu_hottest_core: number;
+  cpu_steal: number;
+  cpu_available: boolean;
+  mem_total: number;
+  mem_available: number;
+  mem_used: number;
+  swap_total: number;
+  swap_used: number;
+  cpu_temp: number;
+  temp_available: boolean;
+  net_interface: string;
+  net_rx_bps: number;
+  net_tx_bps: number;
+  net_available: boolean;
+  available?: boolean; // false when no host provider wired
+}
+
 async function j<T>(r: Response): Promise<T> {
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
@@ -43,4 +66,5 @@ export const api = {
     }).then(j<{ ok: boolean }>),
   logout: () => fetch("/api/logout", { method: "POST" }).then(j<{ ok: boolean }>),
   status: () => fetch("/api/status").then(j<StatusResponse>),
+  host: () => fetch("/api/host").then(j<HostSnapshot>),
 };

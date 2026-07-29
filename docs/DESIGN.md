@@ -63,6 +63,14 @@
 > (`AutoSaveSpan` → `autoSaveSpan`). palapi shipped and green against the
 > live server; /metrics shape captured (incl. undocumented basecampnum).
 >
+> **Revision 15 — 2026-07-28.** Web dashboard composition decided (§6.6a):
+> host metrics (CPU incl. model/clock, RAM, temps, network throughput) live
+> on the home dashboard, not just the Metrics page; data is client-buffered
+> from an `/api/host` snapshot (Proxmox/pfSense pattern — no server-side
+> history store); dashboard cards are user-toggleable via a show/hide
+> checklist stored in the browser (no reposition/resize). CPU static
+> identity added to §6.5.
+>
 > **Revision 14 — 2026-07-28.** Backup strategy clarified: Paladin's own
 > backups are event-anchored only; the game's own time-based backups will
 > be SURFACED and managed (§6.8a), not duplicated by a Paladin scheduler.
@@ -625,7 +633,9 @@ wherever one exists. **[decided]**
   is single-thread bound, so one pinned core matters more than a calm
   average; plus **steal time** (`%st` from `/proc/stat`), which on a VM is
   the only in-guest signal distinguishing "game is heavy" from
-  "hypervisor is busy."
+  "hypervisor is busy." Static CPU identity (model name, core count,
+  base/current clock from `/proc/cpuinfo`) shown as a header alongside the
+  live load, so the operator sees what hardware they are on at a glance.
 - **Disk:** free space on the install/backup volumes, gauge annotated at
   the backup pre-flight requirement (~2× world size); usage breakdown by
   owner: game install / world / Paladin backups / the game's own rolling
@@ -760,6 +770,43 @@ One state machine, two workflows; build it once.
 8. **START** — start via the owned unit; wait for genuine readiness.
 9. **VERIFY** — confirm the server is serving the restored world (world
    ID / save timestamp readback where available) and report honestly.
+
+### 6.6a Dashboard composition — host metrics + customizable cards
+
+> Added at revision 15. The web dashboard (§6.6) is the login landing
+> view and shows BOTH game-server status and host metrics, because the
+> operator wants a system-health glance on login — not just game state.
+
+**Host metrics belong on the home dashboard**, not only the dedicated
+Metrics page (§6.5). The operator explicitly wants CPU (usage + model,
+core count, clock), RAM usage, key temps (CPU/system), and network
+throughput visible immediately on login — the familiar "what's this box
+doing right now" glance. The dedicated Metrics page (§6.5) remains the
+deeper triage view with history and thresholds; the dashboard shows the
+current-snapshot cards. Same host-reader backend feeds both. **[decided]**
+
+**Data path — mostly client-buffered (the Proxmox/pfSense pattern).**
+Host values that the browser cannot read itself (`/proc/stat`,
+`/proc/cpuinfo`, `/sys/class/hwmon`, `/sys/class/net/*/statistics`) are
+read server-side by Paladin and served as a CURRENT SNAPSHOT at
+`/api/host`; the browser polls every few seconds and buffers its own
+rolling window for sparklines. No server-side ring buffer, no history
+persistence, no disk/IO cost — history lives in the open tab, exactly like
+Proxmox/pfSense live graphs, and is the honest scope for at-a-glance
+monitoring. (Longer-term persisted history, if ever wanted, is a separate
+Metrics-page concern, not this.) **[decided at revision 15; supersedes the
+earlier "server-side downsampled-metrics ring buffer" leaning for the
+dashboard's purposes.]**
+
+**Customizable dashboard — card visibility only.** The operator can choose
+WHICH cards appear on the dashboard via a simple checklist (a dropdown of
+toggles: "show these cards"). Deliberately NOT drag-reposition, resize, or
+free layout — just show/hide, keeping the implementation small and the
+default layout coherent. The preference is per-viewer and stored in the
+browser (`localStorage`), which fits the single-admin model and needs no
+backend or new endpoint; a card the operator hides simply is not rendered.
+New cards (host metrics, future sections) register in the same list.
+**[decided at revision 15.]**
 
 ### 6.8a Surfacing Palworld's own backups (distinct feature — NOT YET BUILT)
 

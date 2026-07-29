@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import { api, StatusResponse, SessionState } from "./api";
+import { api, StatusResponse, SessionState, HostSnapshot } from "./api";
+import { Sparkline } from "./Sparkline";
 
 export function App() {
   const [state, setState] = useState<SessionState | "loading">("loading");
@@ -125,16 +126,46 @@ function ComingSoon({ section }: { section: Section }) {
 
 // ---- dashboard ----
 
+// How many samples to keep in the client-side rolling window. At a 5s
+// poll, 60 samples ≈ 5 minutes (the Proxmox/pfSense live-graph pattern —
+// history lives in the tab, nothing stored server-side).
+const HISTORY = 60;
+
+function pushCapped(arr: number[], v: number): number[] {
+  const next = arr.length >= HISTORY ? arr.slice(1) : arr.slice();
+  next.push(v);
+  return next;
+}
+
 function Dashboard() {
   const [st, setSt] = useState<StatusResponse | null>(null);
+  const [host, setHost] = useState<HostSnapshot | null>(null);
   const [err, setErr] = useState("");
+  const [fpsHist, setFpsHist] = useState<number[]>([]);
+  const [rxHist, setRxHist] = useState<number[]>([]);
+  const [txHist, setTxHist] = useState<number[]>([]);
 
   useEffect(() => {
     let alive = true;
-    const tick = () =>
+    const tick = () => {
       api.status()
-        .then((s) => alive && (setSt(s), setErr("")))
+        .then((s) => {
+          if (!alive) return;
+          setSt(s); setErr("");
+          if (s.online) setFpsHist((h) => pushCapped(h, s.fps));
+        })
         .catch((e) => alive && setErr((e as Error).message));
+      api.host()
+        .then((h) => {
+          if (!alive || h.available === false) return;
+          setHost(h);
+          if (h.net_available) {
+            setRxHist((a) => pushCapped(a, h.net_rx_bps));
+            setTxHist((a) => pushCapped(a, h.net_tx_bps));
+          }
+        })
+        .catch(() => {});
+    };
     tick();
     const id = setInterval(tick, 5000);
     return () => { alive = false; clearInterval(id); };
@@ -154,15 +185,17 @@ function Dashboard() {
       </div>
 
       {!st.online && (
-        <div className="offline-banner">
-          Server is not responding. {st.error}
-        </div>
+        <div className="offline-banner">Server is not responding. {st.error}</div>
       )}
 
       <div className="grid">
         <div className="card hero">
           <FpsDial fps={st.fps} />
           <div className="dial-caption">avg {st.fps_average.toFixed(1)} · frame {st.frame_time_ms.toFixed(1)} ms</div>
+          <div style={{ width: "100%", marginTop: 12 }}>
+            <Sparkline data={fpsHist} min={0} max={70}
+              color={st.fps >= 45 ? "var(--good)" : st.fps >= 25 ? "var(--warn)" : "var(--bad)"} />
+          </div>
         </div>
 
         <StatCard className="span4" label="Players online" value={`${st.players}`}
@@ -179,7 +212,50 @@ function Dashboard() {
             <Meta k="Backups" v={`${st.backup_count}`} />
           </div>
         </div>
+
+        {host && <HostCards host={host} rxHist={rxHist} txHist={txHist} />}
       </div>
+    </>
+  );
+}
+
+// Host-metric cards. Temp card hides itself when the host exposes no
+// sensors (VMs) — by design, not failure (§6.5).
+function HostCards({ host, rxHist, txHist }: { host: HostSnapshot; rxHist: number[]; txHist: number[] }) {
+  const memPct = host.mem_total ? (host.mem_used / host.mem_total) * 100 : 0;
+  return (
+    <>
+      <div className="card span4">
+        <div className="card-label">CPU</div>
+        <div><span className="stat-big" style={{ color: cpuColor(host.cpu_usage) }}>{host.cpu_usage.toFixed(0)}</span><span className="stat-unit">%</span></div>
+        <div className="stat-sub">hottest core {host.cpu_hottest_core.toFixed(0)}%{host.cpu_steal > 1 ? ` · steal ${host.cpu_steal.toFixed(0)}%` : ""}</div>
+        <div className="host-ident">{host.cpu_model} · {host.cpu_cores} core{host.cpu_cores === 1 ? "" : "s"} · {(host.cpu_mhz / 1000).toFixed(2)} GHz</div>
+      </div>
+
+      <div className="card span4">
+        <div className="card-label">Memory</div>
+        <div><span className="stat-big" style={{ color: memPct > 90 ? "var(--bad)" : memPct > 75 ? "var(--warn)" : "var(--text)" }}>{fmtBytes(host.mem_used)}</span><span className="stat-unit">/ {fmtBytes(host.mem_total)}</span></div>
+        <div className="stat-sub">{memPct.toFixed(0)}% used{host.swap_used > 0 ? ` · swap ${fmtBytes(host.swap_used)}` : ""}</div>
+      </div>
+
+      {host.temp_available && (
+        <div className="card span4">
+          <div className="card-label">CPU Temp</div>
+          <div><span className="stat-big" style={{ color: host.cpu_temp > 85 ? "var(--bad)" : host.cpu_temp > 70 ? "var(--warn)" : "var(--good)" }}>{host.cpu_temp.toFixed(0)}</span><span className="stat-unit">°C</span></div>
+          <div className="stat-sub">package temperature</div>
+        </div>
+      )}
+
+      {host.net_available && (
+        <div className="card span8">
+          <div className="card-label">Network · {host.net_interface}</div>
+          <div className="net-row">
+            <div className="net-fig"><span className="net-arrow" style={{ color: "var(--good)" }}>↓</span> {fmtRate(host.net_rx_bps)}<span className="net-lbl">rx</span></div>
+            <div className="net-fig"><span className="net-arrow" style={{ color: "var(--accent)" }}>↑</span> {fmtRate(host.net_tx_bps)}<span className="net-lbl">tx</span></div>
+          </div>
+          <div style={{ marginTop: 10 }}><Sparkline data={rxHist.map((r, i) => r + (txHist[i] ?? 0))} color="var(--accent)" height={38} /></div>
+        </div>
+      )}
     </>
   );
 }
@@ -243,6 +319,25 @@ function FpsDial({ fps }: { fps: number }) {
       </div>
     </div>
   );
+}
+
+function cpuColor(pct: number): string {
+  return pct > 90 ? "var(--bad)" : pct > 70 ? "var(--warn)" : "var(--text)";
+}
+
+function fmtBytes(b: number): string {
+  if (b >= 1 << 30) return (b / (1 << 30)).toFixed(1) + " GB";
+  if (b >= 1 << 20) return (b / (1 << 20)).toFixed(0) + " MB";
+  if (b >= 1 << 10) return (b / (1 << 10)).toFixed(0) + " KB";
+  return b + " B";
+}
+
+function fmtRate(bps: number): string {
+  const bits = bps * 8;
+  if (bits >= 1e9) return (bits / 1e9).toFixed(2) + " Gb/s";
+  if (bits >= 1e6) return (bits / 1e6).toFixed(1) + " Mb/s";
+  if (bits >= 1e3) return (bits / 1e3).toFixed(0) + " Kb/s";
+  return bits.toFixed(0) + " b/s";
 }
 
 function formatUptime(sec: number): string {

@@ -114,3 +114,10 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .offline-banner { background: color-mix(in srgb, var(--bad) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--bad) 40%, var(--border)); color: var(--bad); padding: 14px 18px; border-radius: var(--radius); margin-bottom: 18px; font-size: 14px; }
 .placeholder { color: var(--text-faint); font-size: 14px; padding: 40px; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius); }
 .loading { color: var(--text-dim); padding: 40px; text-align: center; }
+
+/* ---- host metric cards ---- */
+.host-ident { margin-top: 10px; font-size: 11px; color: var(--text-faint); font-family: ui-monospace, monospace; line-height: 1.4; }
+.net-row { display: flex; gap: 28px; margin-top: 4px; }
+.net-fig { font-size: 22px; font-weight: 650; display: flex; align-items: baseline; gap: 6px; }
+.net-arrow { font-size: 18px; }
+.net-lbl { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.5px; margin-left: 2px; }

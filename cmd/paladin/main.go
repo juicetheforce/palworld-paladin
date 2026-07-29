@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/juicetheforce/palworld-paladin/internal/backup"
+	"github.com/juicetheforce/palworld-paladin/internal/hostmetrics"
 	"github.com/juicetheforce/palworld-paladin/internal/maintain"
 	"github.com/juicetheforce/palworld-paladin/internal/palapi"
 	"github.com/juicetheforce/palworld-paladin/internal/settings"
@@ -503,11 +504,15 @@ func cmdServe(args []string) error {
 	if err != nil {
 		return err
 	}
+	sampler := hostmetrics.NewSampler(3 * time.Second)
+	go sampler.Run(context.Background())
+
 	srv := webserv.New(webserv.Config{
 		Auth:     auth,
 		Sessions: webserv.NewSessionStore(12 * time.Hour),
 		Status:   d.api,
 		Backups:  d.mgr,
+		Host:     sampler,
 		Static:   webserv.Assets(),
 	})
 	if auth.NeedsSetup() {

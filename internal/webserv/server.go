@@ -24,6 +24,13 @@ type BackupCounter interface {
 	Count() (int, error)
 }
 
+// HostProvider returns the latest host snapshot (CPU/RAM/temps/network).
+// Implemented by a background sampler so throughput deltas stay warm
+// regardless of how often the browser polls (DESIGN.md §6.6a).
+type HostProvider interface {
+	Latest() any
+}
+
 // Server is Paladin's HTTP server: JSON API under /api, static SPA
 // everything else. LAN/localhost bind by default (§8).
 type Server struct {
@@ -31,6 +38,7 @@ type Server struct {
 	sessions *SessionStore
 	status   StatusProvider
 	backups  BackupCounter
+	host     HostProvider
 	static   fs.FS // the embedded built React bundle
 	mux      *http.ServeMux
 }
@@ -41,13 +49,14 @@ type Config struct {
 	Sessions *SessionStore
 	Status   StatusProvider
 	Backups  BackupCounter
+	Host     HostProvider
 	Static   fs.FS
 }
 
 func New(cfg Config) *Server {
 	s := &Server{
 		auth: cfg.Auth, sessions: cfg.Sessions, status: cfg.Status,
-		backups: cfg.Backups, static: cfg.Static, mux: http.NewServeMux(),
+		backups: cfg.Backups, host: cfg.Host, static: cfg.Static, mux: http.NewServeMux(),
 	}
 	s.routes()
 	return s
@@ -64,6 +73,7 @@ func (s *Server) routes() {
 
 	// Protected API.
 	s.mux.Handle("GET /api/status", s.requireAuth(http.HandlerFunc(s.handleStatus)))
+	s.mux.Handle("GET /api/host", s.requireAuth(http.HandlerFunc(s.handleHost)))
 
 	// Static SPA fallback for everything else.
 	if s.static != nil {
@@ -229,6 +239,17 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleHost returns the latest host-metrics snapshot. If no host provider
+// is wired, it returns an explicit unavailable marker rather than 404, so
+// the dashboard can hide host cards cleanly.
+func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
+	if s.host == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"available": false})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.host.Latest())
 }
 
 // spaHandler serves embedded static files, falling back to index.html for
