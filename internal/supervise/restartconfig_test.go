@@ -10,8 +10,11 @@ func TestRestartConfigValidation(t *testing.T) {
 	if err := ok.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	if err := (RestartConfig{Enabled: true, ThresholdGB: 0.5}).Validate(); err != nil {
+		t.Fatal("0.5 GB (the floor) must be valid — it's how the trip gets tested")
+	}
 	bad := []RestartConfig{
-		{Enabled: true, ThresholdGB: 0.5}, // below the idle-usage floor
+		{Enabled: true, ThresholdGB: 0.3}, // below the nonsense floor
 		{Enabled: true, ThresholdGB: 9999},
 		{Enabled: true, ThresholdGB: 12, DelaySeconds: -1},
 		{Enabled: true, ThresholdGB: 12, DelaySeconds: 601},

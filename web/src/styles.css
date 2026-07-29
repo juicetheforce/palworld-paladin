@@ -287,3 +287,10 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .upd-badge.avail { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); font-weight: 650; }
 .upd-badge.err { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
 .admin-btn.lit-warn { border-color: var(--warn); color: var(--warn); box-shadow: 0 0 0 1px var(--warn), 0 0 16px -4px var(--warn); }
+
+.mem-low-warn {
+  font-size: 12px; line-height: 1.5; padding: 9px 12px; border-radius: 8px;
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  color: var(--warn);
+}

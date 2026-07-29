@@ -30,16 +30,18 @@ func (c RestartConfig) ThresholdBytes() uint64 {
 	return uint64(c.ThresholdGB * float64(1<<30))
 }
 
-// Validate enforces sane bounds. The 1 GB floor exists because the server
-// idles near 0.8 GB — a threshold below idle usage would restart-loop
-// (the supervisor's cooldown would slow it, but the config should refuse
-// the foot-gun outright).
+// Validate enforces sane bounds. The floor is deliberately LOW (0.5 GB):
+// it only rejects nonsense values (zero, typos). A threshold below the
+// server's current usage is a legitimate operator choice — useful for
+// testing the trip — and is handled by informed consent (the UI warns
+// when threshold ≤ live usage) plus the supervisor's firing cooldown,
+// not by a validator guessing what "too low" means for every server.
 func (c RestartConfig) Validate() error {
 	if !c.Enabled {
 		return nil // disabled config stores whatever draft values it likes
 	}
-	if c.ThresholdGB < 1 || c.ThresholdGB > 512 {
-		return fmt.Errorf("threshold must be between 1 and 512 GB")
+	if c.ThresholdGB < 0.5 || c.ThresholdGB > 512 {
+		return fmt.Errorf("threshold must be between 0.5 and 512 GB")
 	}
 	if c.DelaySeconds < 0 || c.DelaySeconds > 600 {
 		return fmt.Errorf("delay must be between 0 and 600 seconds")

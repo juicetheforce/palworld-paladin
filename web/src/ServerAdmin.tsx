@@ -228,10 +228,18 @@ export function ServerAdmin() {
             <div className="admin-warn-opts">
               <div className="admin-delay">
                 <label>Threshold</label>
-                <input type="number" min={1} max={512} step={0.5} value={mem.threshold_gb}
+                <input type="number" min={0.5} max={512} step={0.1} value={mem.threshold_gb}
                   onChange={(e) => editMem({ threshold_gb: Math.max(0, +e.target.value) })} />
                 <span>GB</span>
               </div>
+              {memNow !== null && mem.threshold_gb <= memNow / (1 << 30) && (
+                <div className="mem-low-warn">
+                  Threshold is at or below current usage ({(memNow / (1 << 30)).toFixed(1)} GB) —
+                  the server will restart within ~15s of saving, and again every
+                  10 minutes while usage stays above it. Fine for testing;
+                  probably not what you want long-term.
+                </div>
+              )}
               <input className="admin-input" value={mem.broadcast}
                 onChange={(e) => editMem({ broadcast: e.target.value })}
                 placeholder="Warning message (empty = restart immediately)" />
