@@ -6,6 +6,7 @@ import { CustomizeMenu } from "./CustomizeMenu";
 import { Players } from "./Players";
 import { OfflineNotice } from "./OfflineNotice";
 import { ServerAdmin } from "./ServerAdmin";
+import { Backups } from "./Backups";
 
 export function App() {
   const [state, setState] = useState<SessionState | "loading">("loading");
@@ -82,7 +83,7 @@ const NAV: { id: Section; label: string; icon: string; ready?: boolean }[] = [
   { id: "players", label: "Players", icon: "◆", ready: true },
   { id: "map", label: "World Map", icon: "◉" },
   { id: "settings", label: "Settings", icon: "⚙" },
-  { id: "backups", label: "Backups", icon: "❒" },
+  { id: "backups", label: "Backups", icon: "❒", ready: true },
   { id: "console", label: "Server Admin", icon: "❯", ready: true },
   { id: "metrics", label: "Metrics", icon: "◔" },
 ];
@@ -112,7 +113,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         <div className="nav-foot">Paladin v0.1 · trial</div>
       </nav>
       <main className="main">
-        {section === "dashboard" ? <Dashboard /> : section === "players" ? <Players /> : section === "console" ? <ServerAdmin /> : <ComingSoon section={section} />}
+        {section === "dashboard" ? <Dashboard /> : section === "players" ? <Players /> : section === "console" ? <ServerAdmin /> : section === "backups" ? <Backups /> : <ComingSoon section={section} />}
       </main>
     </div>
   );

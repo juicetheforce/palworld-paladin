@@ -3,6 +3,7 @@ package webserv
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/juicetheforce/palworld-paladin/internal/backup"
 	"github.com/juicetheforce/palworld-paladin/internal/events"
 	"github.com/juicetheforce/palworld-paladin/internal/palapi"
 	"github.com/juicetheforce/palworld-paladin/internal/supervise"
@@ -615,4 +617,98 @@ func TestMemRestartGetAndSet(t *testing.T) {
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("invalid config must 400, got %d", resp.StatusCode)
 	}
+}
+
+// ---- backups page endpoints ----
+
+type fakeBackupMgr struct {
+	deleted []string
+	failOn  string
+}
+
+func (f *fakeBackupMgr) List() ([]backup.Entry, []string, error) { return nil, nil, nil }
+func (f *fakeBackupMgr) Delete(id string) error {
+	if id == f.failOn {
+		return fmt.Errorf("boom")
+	}
+	f.deleted = append(f.deleted, id)
+	return nil
+}
+
+func TestBackupDeleteBatchPartialFailure(t *testing.T) {
+	auth, _ := LoadAuthStore(filepath.Join(t.TempDir(), "auth.json"))
+	auth.SetAdminPassword("admin", "hunter2hunter2")
+	mgr := &fakeBackupMgr{failOn: "bad-id"}
+	s := New(Config{
+		Auth: auth, Sessions: NewSessionStore(0),
+		Status: fakeStatus{info: &palapi.Info{}}, BackupMgr: mgr,
+		Static: fstest.MapFS{"index.html": {Data: []byte("x")}},
+	})
+	h := s.Handler()
+	ck := authedCookie(t, h)
+
+	resp := do(t, h, "POST", "/api/admin/backups/delete-batch", `{"ids":["a","bad-id","c"]}`, ck)
+	var body struct {
+		Deleted int               `json:"deleted"`
+		Failed  map[string]string `json:"failed"`
+	}
+	json.NewDecoder(resp.Body).Decode(&body)
+	if body.Deleted != 2 || len(body.Failed) != 1 || body.Failed["bad-id"] == "" {
+		t.Fatalf("partial failure must be per-id: %+v", body)
+	}
+	// Empty ids → 400.
+	resp = do(t, h, "POST", "/api/admin/backups/delete-batch", `{"ids":[]}`, ck)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("empty ids must 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestBackupCreateAndRestoreBusyExclusion(t *testing.T) {
+	auth, _ := LoadAuthStore(filepath.Join(t.TempDir(), "auth.json"))
+	auth.SetAdminPassword("admin", "hunter2hunter2")
+	hub := events.NewHub(64)
+	block := make(chan struct{})
+	s := New(Config{
+		Auth: auth, Sessions: NewSessionStore(0),
+		Status: fakeStatus{info: &palapi.Info{}},
+		Hub:    hub,
+		CreateBackup: func(context.Context) (*backup.Entry, error) {
+			<-block
+			return &backup.Entry{ID: "bk-1"}, nil
+		},
+		Restore: func(_ context.Context, id, _ string, _ int) RestoreResult {
+			return RestoreResult{Status: "success", Detail: "restored " + id}
+		},
+		Static: fstest.MapFS{"index.html": {Data: []byte("x")}},
+	})
+	h := s.Handler()
+	ck := authedCookie(t, h)
+
+	// Kick a create (blocks) → restore must 409 while it runs.
+	resp := do(t, h, "POST", "/api/admin/backups", ``, ck)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("create must 202, got %d", resp.StatusCode)
+	}
+	resp = do(t, h, "POST", "/api/admin/backups/restore", `{"id":"bk-1"}`, ck)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("restore during create must 409, got %d", resp.StatusCode)
+	}
+	close(block)
+
+	// After the create finishes, restore is allowed and records history.
+	waitFor(t, 2*time.Second, func() bool {
+		resp := do(t, h, "POST", "/api/admin/backups/restore", `{"id":"bk-2"}`, ck)
+		return resp.StatusCode == http.StatusAccepted
+	})
+	waitFor(t, 2*time.Second, func() bool {
+		resp := do(t, h, "GET", "/api/admin/history", "", ck)
+		var hist struct{ History []LogEntry }
+		json.NewDecoder(resp.Body).Decode(&hist)
+		for _, e := range hist.History {
+			if e.Action == "restore" && e.OK {
+				return true
+			}
+		}
+		return false
+	})
 }

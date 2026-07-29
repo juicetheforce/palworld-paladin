@@ -150,6 +150,19 @@ export const api = {
   save: () => fetch("/api/admin/save", { method: "POST" }).then(j<{ ok: boolean }>),
   adminBackups: () => fetch("/api/admin/backups").then(j<{ backups: BackupInfo[]; partials: number }>),
   deleteBackup: (id: string) => fetch(`/api/admin/backups/${id}`, { method: "DELETE" }).then(j<{ ok: boolean }>),
+  createBackup: () => fetch("/api/admin/backups", { method: "POST" }).then(j<{ accepted: boolean }>),
+  deleteBackups: (ids: string[]) =>
+    fetch("/api/admin/backups/delete-batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    }).then(j<{ deleted: number; failed: Record<string, string> }>),
+  restoreBackup: (id: string, broadcast = "", delay_seconds = 0) =>
+    fetch("/api/admin/backups/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, broadcast, delay_seconds }),
+    }).then(j<{ accepted: boolean }>),
   history: () => fetch("/api/admin/history").then(j<{ history: HistoryEntry[] }>),
   memRestart: () => fetch("/api/admin/mem-restart").then(j<MemRestartResponse>),
   setMemRestart: (config: MemRestartConfig) =>

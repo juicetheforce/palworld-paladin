@@ -36,50 +36,55 @@ type HostProvider interface {
 // Server is Paladin's HTTP server: JSON API under /api, static SPA
 // everything else. LAN/localhost bind by default (§8).
 type Server struct {
-	auth        *AuthStore
-	sessions    *SessionStore
-	status      StatusProvider
-	backups     BackupCounter
-	host        HostProvider
-	players     PlayerProvider
-	banList     BanListReader
-	lifecycle   Lifecycle
-	broadcaster Broadcaster
-	backupMgr   BackupManager
-	readiness   Readiness
-	update      UpdateRunner
-	updateBusy  atomic.Bool
-	localBuild  LocalBuildFunc
-	remoteBuild RemoteBuildFunc
-	memRestart  MemRestartStore
-	unitMemory  UnitMemoryFunc
-	check       updateCheck
-	actions     *actionLog
-	hub         *events.Hub
-	static      fs.FS // the embedded built React bundle
-	mux         *http.ServeMux
+	auth         *AuthStore
+	sessions     *SessionStore
+	status       StatusProvider
+	backups      BackupCounter
+	host         HostProvider
+	players      PlayerProvider
+	banList      BanListReader
+	lifecycle    Lifecycle
+	broadcaster  Broadcaster
+	backupMgr    BackupManager
+	readiness    Readiness
+	update       UpdateRunner
+	updateBusy   atomic.Bool
+	localBuild   LocalBuildFunc
+	remoteBuild  RemoteBuildFunc
+	memRestart   MemRestartStore
+	unitMemory   UnitMemoryFunc
+	createBackup CreateBackupFunc
+	restore      RestoreRunner
+	backupBusy   atomic.Bool
+	check        updateCheck
+	actions      *actionLog
+	hub          *events.Hub
+	static       fs.FS // the embedded built React bundle
+	mux          *http.ServeMux
 }
 
 // Config wires a Server.
 type Config struct {
-	Auth        *AuthStore
-	Sessions    *SessionStore
-	Status      StatusProvider
-	Backups     BackupCounter
-	Host        HostProvider
-	Players     PlayerProvider
-	BanList     BanListReader
-	Lifecycle   Lifecycle
-	Broadcaster Broadcaster
-	BackupMgr   BackupManager
-	Readiness   Readiness
-	Update      UpdateRunner
-	LocalBuild  LocalBuildFunc
-	RemoteBuild RemoteBuildFunc
-	MemRestart  MemRestartStore
-	UnitMemory  UnitMemoryFunc
-	Hub         *events.Hub
-	Static      fs.FS
+	Auth         *AuthStore
+	Sessions     *SessionStore
+	Status       StatusProvider
+	Backups      BackupCounter
+	Host         HostProvider
+	Players      PlayerProvider
+	BanList      BanListReader
+	Lifecycle    Lifecycle
+	Broadcaster  Broadcaster
+	BackupMgr    BackupManager
+	Readiness    Readiness
+	Update       UpdateRunner
+	LocalBuild   LocalBuildFunc
+	RemoteBuild  RemoteBuildFunc
+	MemRestart   MemRestartStore
+	UnitMemory   UnitMemoryFunc
+	CreateBackup CreateBackupFunc
+	Restore      RestoreRunner
+	Hub          *events.Hub
+	Static       fs.FS
 }
 
 func New(cfg Config) *Server {
@@ -91,6 +96,7 @@ func New(cfg Config) *Server {
 		update:     cfg.Update,
 		localBuild: cfg.LocalBuild, remoteBuild: cfg.RemoteBuild,
 		memRestart: cfg.MemRestart, unitMemory: cfg.UnitMemory,
+		createBackup: cfg.CreateBackup, restore: cfg.Restore,
 		actions: newActionLog(100), hub: cfg.Hub, static: cfg.Static, mux: http.NewServeMux(),
 	}
 	s.routes()
@@ -124,6 +130,9 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/admin/update-check", s.requireAuth(http.HandlerFunc(s.handleUpdateCheckRefresh)))
 	s.mux.Handle("GET /api/admin/mem-restart", s.requireAuth(http.HandlerFunc(s.handleMemRestartGet)))
 	s.mux.Handle("PUT /api/admin/mem-restart", s.requireAuth(http.HandlerFunc(s.handleMemRestartSet)))
+	s.mux.Handle("POST /api/admin/backups", s.requireAuth(http.HandlerFunc(s.handleBackupCreate)))
+	s.mux.Handle("POST /api/admin/backups/delete-batch", s.requireAuth(http.HandlerFunc(s.handleBackupDeleteBatch)))
+	s.mux.Handle("POST /api/admin/backups/restore", s.requireAuth(http.HandlerFunc(s.handleBackupRestore)))
 
 	// Static SPA fallback for everything else.
 	if s.static != nil {

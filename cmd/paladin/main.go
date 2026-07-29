@@ -591,6 +591,15 @@ func cmdServe(args []string) error {
 			return steam.RemoteBuildID(c, scmd, steam.PalworldAppID)
 		},
 		MemRestart: memStore,
+		CreateBackup: func(ctx context.Context) (*backup.Entry, error) {
+			// Save first (best-effort) so the backup captures the latest
+			// world state; a down server just skips the save.
+			sctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			d.api.Save(sctx)
+			cancel()
+			return d.mgr.Create(ctx, d.worldDir, backup.TriggerManual)
+		},
+		Restore: makeRestoreRunner(d, serveEngine, hub),
 		UnitMemory: func(ctx context.Context) (uint64, error) {
 			p, err := d.unit.Show(ctx)
 			if err != nil {
@@ -789,4 +798,47 @@ func runMemRestart(ctx context.Context, d *deps, hub *events.Hub, cfg supervise.
 	}
 	hub.Done(op, "Memory restart complete — server is back up.", true)
 	record("memory restart", "threshold restart completed, server responding", true)
+}
+
+// makeRestoreRunner builds the closure for web-triggered restore cycles,
+// mirroring makeUpdateRunner: same engine (I1 single-flight), same event
+// bridge, terminal semantics owned here.
+func makeRestoreRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.RestoreRunner {
+	return func(ctx context.Context, backupID, broadcast string, delaySec int) webserv.RestoreResult {
+		entry, err := d.mgr.Get(backupID)
+		if err != nil {
+			hub.Error("restore", "backup not found: "+err.Error())
+			return webserv.RestoreResult{Status: "aborted", Detail: "backup not found: " + err.Error()}
+		}
+
+		p := &backup.RestorePayload{
+			Mgr: d.mgr, Selected: entry, WorldDir: d.worldDir,
+			SafetyRelocateDir: defSafetyHold,
+			ReadWorldGUID: func(c context.Context) (string, error) {
+				info, err := d.api.Info(c)
+				if err != nil {
+					return "", err
+				}
+				return info.WorldGUID, nil
+			},
+		}
+
+		var ann []maintain.Announcement
+		if broadcast != "" {
+			ann = append(ann, maintain.Announcement{Message: broadcast, Wait: time.Duration(delaySec) * time.Second})
+		}
+
+		cycleID := fmt.Sprintf("restore-%d", time.Now().Unix())
+		out, _ := eng.RunWithAnnouncements(context.Background(), cycleID, p, ann)
+
+		switch out.Status {
+		case maintain.StatusSuccess:
+			hub.Done("restore", "Restore complete — world "+backupID+" is live and verified.", true)
+		case maintain.StatusSuccessWithWarnings:
+			hub.Done("restore", "Restore applied and server is up, with warnings: "+out.Detail, true)
+		default:
+			hub.Error("restore", "Restore did not complete: "+out.Detail)
+		}
+		return webserv.RestoreResult{Status: string(out.Status), Detail: out.Detail}
+	}
 }

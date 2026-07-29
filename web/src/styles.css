@@ -294,3 +294,19 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
   border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
   color: var(--warn);
 }
+
+/* ---- backups page ---- */
+.sel-bar {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 12px;
+  padding: 10px 16px; background: var(--surface-2); border: 1px solid var(--border-lit);
+  border-radius: 10px; font-size: 13px; color: var(--text);
+}
+.bk-check { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+.bk-date { font-size: 13px; color: var(--text-dim); }
+.trigger-badge {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 3px 8px; border-radius: 5px; background: var(--surface-2); color: var(--text-dim);
+}
+.trigger-badge.t-manual { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.trigger-badge.t-pre-update { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.trigger-badge.t-pre-commit, .trigger-badge.t-pre-restore { color: var(--good); background: color-mix(in srgb, var(--good) 12%, transparent); }
