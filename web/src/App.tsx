@@ -19,17 +19,19 @@ export function App() {
 // ---- auth ----
 
 function AuthScreen({ mode, onDone }: { mode: "setup" | "login"; onDone: () => void }) {
-  const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // Single-admin model (§6.6): there is no user administration, so the
+  // password is the only credential. The backend uses a fixed "admin"
+  // username internally; no reason to show it.
   const submit = async () => {
     setBusy(true);
     setErr("");
     try {
-      if (mode === "setup") await api.setup(username, password);
-      else await api.login(username, password);
+      if (mode === "setup") await api.setup(password);
+      else await api.login(password);
       onDone();
     } catch (e) {
       setErr((e as Error).message);
@@ -43,18 +45,15 @@ function AuthScreen({ mode, onDone }: { mode: "setup" | "login"; onDone: () => v
         <div className="auth-logo">Pal<span>adin</span></div>
         <div className="auth-sub">
           {mode === "setup"
-            ? "First run — create your admin password."
-            : "Sign in to manage your server."}
+            ? "First run — set a password to protect this panel."
+            : "Enter your password to continue."}
         </div>
         <div className="field">
-          <label>Username</label>
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
-        </div>
-        <div className="field">
-          <label>Password</label>
+          <label>{mode === "setup" ? "New password" : "Password"}</label>
           <input
             type="password"
             value={password}
+            autoFocus
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
             autoComplete={mode === "setup" ? "new-password" : "current-password"}
@@ -62,7 +61,7 @@ function AuthScreen({ mode, onDone }: { mode: "setup" | "login"; onDone: () => v
         </div>
         <div className="auth-err">{err}</div>
         <button className="btn" onClick={submit} disabled={busy || password.length < 1}>
-          {mode === "setup" ? "Create & enter" : "Sign in"}
+          {mode === "setup" ? "Set password & enter" : "Sign in"}
         </button>
       </div>
     </div>
@@ -228,7 +227,7 @@ function HostCards({ host, rxHist, txHist }: { host: HostSnapshot; rxHist: numbe
       <div className="card span4">
         <div className="card-label">CPU</div>
         <div><span className="stat-big" style={{ color: cpuColor(host.cpu_usage) }}>{host.cpu_usage.toFixed(0)}</span><span className="stat-unit">%</span></div>
-        <div className="stat-sub">hottest core {host.cpu_hottest_core.toFixed(0)}%{host.cpu_steal > 1 ? ` · steal ${host.cpu_steal.toFixed(0)}%` : ""}</div>
+        <div className="stat-sub">busiest core {host.cpu_hottest_core.toFixed(0)}%{host.cpu_steal > 1 ? ` · steal ${host.cpu_steal.toFixed(0)}%` : ""}</div>
         <div className="host-ident">{host.cpu_model} · {host.cpu_cores} core{host.cpu_cores === 1 ? "" : "s"} · {(host.cpu_mhz / 1000).toFixed(2)} GHz</div>
       </div>
 

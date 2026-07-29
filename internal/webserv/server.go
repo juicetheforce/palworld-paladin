@@ -149,6 +149,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
 		return
 	}
+	// Single-admin model: the UI sends only a password; the username is a
+	// fixed internal constant (§6.6). Default it so password-only login
+	// works, while the users-slice storage stays RBAC-ready.
+	if req.Username == "" {
+		req.Username = "admin"
+	}
 	if !s.auth.Verify(req.Username, req.Password) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
