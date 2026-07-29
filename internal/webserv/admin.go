@@ -236,7 +236,7 @@ func (s *Server) handleBroadcast(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	err := s.broadcaster.Announce(ctx, req.Message)
-	s.logAction("broadcast", req.Message, err == nil)
+	s.recordAction("broadcast", req.Message, err == nil)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
@@ -252,7 +252,7 @@ func (s *Server) handleSave(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	err := s.broadcaster.Save(ctx)
-	s.logAction("save", "manual world save", err == nil)
+	s.recordAction("save", "world flushed to disk", err == nil)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
@@ -310,5 +310,21 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 func (s *Server) logAction(action, detail string, ok bool) {
 	if s.actions != nil {
 		s.actions.add(action, detail, ok)
+	}
+}
+
+// recordAction logs to the history card AND publishes a live-stream event,
+// so every admin action shows up consistently in both the Recent actions
+// list and the Live activity feed. One-shot actions (broadcast, save) use
+// this; multi-step operations (lifecycle) stream their own progress and
+// call logAction directly for the terminal record.
+func (s *Server) recordAction(action, detail string, ok bool) {
+	s.logAction(action, detail, ok)
+	if s.hub != nil {
+		msg := action
+		if detail != "" {
+			msg = action + ": " + detail
+		}
+		s.hub.Done(action, msg, ok)
 	}
 }
