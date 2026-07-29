@@ -58,6 +58,7 @@ func (s *Server) handlePlayers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp.Online = true
+	resp.Players = []rosterPlayer{} // never null — the UI maps over this
 	for _, p := range live {
 		resp.Players = append(resp.Players, rosterPlayer{
 			Name: p.Name, UserID: p.UserID, Online: true,

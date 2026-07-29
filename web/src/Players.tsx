@@ -11,9 +11,9 @@ export function Players() {
 
   const load = useCallback(() => {
     api.players()
-      .then((r) => { setPlayers(r.players); setOnline(r.online); setHistoryTier(r.history_tier); setErr(r.error || ""); })
+      .then((r) => { setPlayers(r.players ?? []); setOnline(r.online); setHistoryTier(r.history_tier); setErr(r.error || ""); })
       .catch((e) => setErr((e as Error).message));
-    api.bans().then((r) => setBans(r.bans)).catch(() => {});
+    api.bans().then((r) => setBans(r.bans ?? [])).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -36,7 +36,7 @@ export function Players() {
     }
   };
 
-  const onlinePlayers = players.filter((p) => p.online);
+  const onlinePlayers = (players ?? []).filter((p) => p.online);
 
   return (
     <>
