@@ -507,12 +507,17 @@ func cmdServe(args []string) error {
 	sampler := hostmetrics.NewSampler(3 * time.Second)
 	go sampler.Run(context.Background())
 
+	// banlist.txt lives in SaveGames/ (parent of the world dirs).
+	banlistPath := filepath.Join(filepath.Dir(d.worldDir), "banlist.txt")
+
 	srv := webserv.New(webserv.Config{
 		Auth:     auth,
 		Sessions: webserv.NewSessionStore(12 * time.Hour),
 		Status:   d.api,
 		Backups:  d.mgr,
 		Host:     sampler,
+		Players:  d.api,
+		BanList:  func() ([]palapi.BanEntry, error) { return palapi.ReadBanList(banlistPath) },
 		Static:   webserv.Assets(),
 	})
 	if auth.NeedsSetup() {

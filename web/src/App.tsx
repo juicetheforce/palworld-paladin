@@ -3,6 +3,7 @@ import { api, StatusResponse, SessionState, HostSnapshot } from "./api";
 import { Sparkline } from "./Sparkline";
 import { usePrefs } from "./usePrefs";
 import { CustomizeMenu } from "./CustomizeMenu";
+import { Players } from "./Players";
 
 export function App() {
   const [state, setState] = useState<SessionState | "loading">("loading");
@@ -76,7 +77,7 @@ type Section = "dashboard" | "players" | "map" | "settings" | "backups" | "conso
 
 const NAV: { id: Section; label: string; icon: string; ready?: boolean }[] = [
   { id: "dashboard", label: "Dashboard", icon: "▮", ready: true },
-  { id: "players", label: "Players", icon: "◆" },
+  { id: "players", label: "Players", icon: "◆", ready: true },
   { id: "map", label: "World Map", icon: "◉" },
   { id: "settings", label: "Settings", icon: "⚙" },
   { id: "backups", label: "Backups", icon: "❒" },
@@ -109,7 +110,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         <div className="nav-foot">Paladin v0.1 · trial</div>
       </nav>
       <main className="main">
-        {section === "dashboard" ? <Dashboard /> : <ComingSoon section={section} />}
+        {section === "dashboard" ? <Dashboard /> : section === "players" ? <Players /> : <ComingSoon section={section} />}
       </main>
     </div>
   );

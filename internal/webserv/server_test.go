@@ -181,3 +181,79 @@ func TestSPAFallback(t *testing.T) {
 		t.Fatalf("SPA route must serve index.html, got %d", resp.StatusCode)
 	}
 }
+
+// ---- players ----
+
+type fakePlayers struct{ kicked, banned, unbanned string }
+
+func (f *fakePlayers) Players(context.Context) ([]palapi.Player, error) {
+	return []palapi.Player{{Name: "Ryan", UserID: "steam_1", Level: 42, Ping: 20}}, nil
+}
+func (f *fakePlayers) Kick(_ context.Context, id, _ string) error { f.kicked = id; return nil }
+func (f *fakePlayers) Ban(_ context.Context, id, _ string) error  { f.banned = id; return nil }
+func (f *fakePlayers) Unban(_ context.Context, id string) error   { f.unbanned = id; return nil }
+
+func newPlayersServer(t *testing.T) (*Server, *AuthStore, *fakePlayers) {
+	t.Helper()
+	auth, _ := LoadAuthStore(filepath.Join(t.TempDir(), "auth.json"))
+	auth.SetAdminPassword("admin", "hunter2hunter2")
+	fp := &fakePlayers{}
+	s := New(Config{
+		Auth: auth, Sessions: NewSessionStore(0),
+		Status:  fakeStatus{info: &palapi.Info{ServerName: "T"}},
+		Players: fp,
+		BanList: func() ([]palapi.BanEntry, error) { return []palapi.BanEntry{{UserID: "steam_9"}}, nil },
+		Static:  fstest.MapFS{"index.html": {Data: []byte("x")}},
+	})
+	return s, auth, fp
+}
+
+func authedCookie(t *testing.T, h http.Handler) *http.Cookie {
+	t.Helper()
+	resp := do(t, h, "POST", "/api/login", `{"password":"hunter2hunter2"}`, nil)
+	return sessionCookie(resp)
+}
+
+func TestPlayersRosterReservedFields(t *testing.T) {
+	s, _, _ := newPlayersServer(t)
+	h := s.Handler()
+	ck := authedCookie(t, h)
+	resp := do(t, h, "GET", "/api/players", "", ck)
+	var body playersResponse
+	json.NewDecoder(resp.Body).Decode(&body)
+	if !body.Online || len(body.Players) != 1 {
+		t.Fatalf("bad roster: %+v", body)
+	}
+	p := body.Players[0]
+	if p.Level != 42 || p.Guild != nil || p.Bases != nil {
+		t.Fatalf("online tier should populate level; guild/bases reserved-null: %+v", p)
+	}
+	if body.HistoryTier {
+		t.Fatal("history tier must be false until save parsing exists")
+	}
+}
+
+func TestPlayerActions(t *testing.T) {
+	s, _, fp := newPlayersServer(t)
+	h := s.Handler()
+	ck := authedCookie(t, h)
+	do(t, h, "POST", "/api/players/kick", `{"user_id":"steam_1"}`, ck)
+	do(t, h, "POST", "/api/players/ban", `{"user_id":"steam_2"}`, ck)
+	do(t, h, "POST", "/api/players/unban", `{"user_id":"steam_9"}`, ck)
+	if fp.kicked != "steam_1" || fp.banned != "steam_2" || fp.unbanned != "steam_9" {
+		t.Fatalf("actions not dispatched: %+v", fp)
+	}
+	// Missing user_id is a 400.
+	resp := do(t, h, "POST", "/api/players/kick", `{}`, ck)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("missing user_id must 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestPlayerActionsRequireAuth(t *testing.T) {
+	s, _, _ := newPlayersServer(t)
+	resp := do(t, s.Handler(), "POST", "/api/players/kick", `{"user_id":"x"}`, nil)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("moderation must require auth, got %d", resp.StatusCode)
+	}
+}

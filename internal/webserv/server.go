@@ -39,6 +39,8 @@ type Server struct {
 	status   StatusProvider
 	backups  BackupCounter
 	host     HostProvider
+	players  PlayerProvider
+	banList  BanListReader
 	static   fs.FS // the embedded built React bundle
 	mux      *http.ServeMux
 }
@@ -50,13 +52,16 @@ type Config struct {
 	Status   StatusProvider
 	Backups  BackupCounter
 	Host     HostProvider
+	Players  PlayerProvider
+	BanList  BanListReader
 	Static   fs.FS
 }
 
 func New(cfg Config) *Server {
 	s := &Server{
 		auth: cfg.Auth, sessions: cfg.Sessions, status: cfg.Status,
-		backups: cfg.Backups, host: cfg.Host, static: cfg.Static, mux: http.NewServeMux(),
+		backups: cfg.Backups, host: cfg.Host, players: cfg.Players,
+		banList: cfg.BanList, static: cfg.Static, mux: http.NewServeMux(),
 	}
 	s.routes()
 	return s
@@ -74,6 +79,9 @@ func (s *Server) routes() {
 	// Protected API.
 	s.mux.Handle("GET /api/status", s.requireAuth(http.HandlerFunc(s.handleStatus)))
 	s.mux.Handle("GET /api/host", s.requireAuth(http.HandlerFunc(s.handleHost)))
+	s.mux.Handle("GET /api/players", s.requireAuth(http.HandlerFunc(s.handlePlayers)))
+	s.mux.Handle("GET /api/bans", s.requireAuth(http.HandlerFunc(s.handleBanList)))
+	s.mux.Handle("POST /api/players/{action}", s.requireAuth(http.HandlerFunc(s.handlePlayerAction)))
 
 	// Static SPA fallback for everything else.
 	if s.static != nil {

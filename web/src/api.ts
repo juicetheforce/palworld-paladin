@@ -42,6 +42,28 @@ export interface HostSnapshot {
   available?: boolean; // false when no host provider wired
 }
 
+export interface RosterPlayer {
+  name: string;
+  user_id: string;
+  online: boolean;
+  level: number;
+  ping: number;
+  guild: string | null; // reserved for save-parsing tier
+  bases: number | null;  // reserved for save-parsing tier
+}
+
+export interface PlayersResponse {
+  online: boolean;
+  players: RosterPlayer[];
+  history_tier: boolean; // false until save parsing exists
+  error?: string;
+}
+
+export interface BanEntry {
+  user_id: string;
+  raw: string;
+}
+
 async function j<T>(r: Response): Promise<T> {
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
@@ -67,4 +89,12 @@ export const api = {
   logout: () => fetch("/api/logout", { method: "POST" }).then(j<{ ok: boolean }>),
   status: () => fetch("/api/status").then(j<StatusResponse>),
   host: () => fetch("/api/host").then(j<HostSnapshot>),
+  players: () => fetch("/api/players").then(j<PlayersResponse>),
+  bans: () => fetch("/api/bans").then(j<{ bans: BanEntry[] }>),
+  playerAction: (action: "kick" | "ban" | "unban", user_id: string, message = "") =>
+    fetch(`/api/players/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id, message }),
+    }).then(j<{ ok: boolean }>),
 };
