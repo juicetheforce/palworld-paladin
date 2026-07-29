@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { api, HistoryEntry, UpdateCheckResponse } from "./api";
+import { api, HistoryEntry, UpdateCheckResponse, MemRestartConfig } from "./api";
 import { useServerState } from "./useServerState";
 import { useEventStream } from "./useEventStream";
 import { LiveLog } from "./LiveLog";
@@ -18,9 +18,21 @@ export function ServerAdmin() {
   const [updDelay, setUpdDelay] = useState(60);
   const [updRunning, setUpdRunning] = useState(false);
   const [check, setCheck] = useState<UpdateCheckResponse | null>(null);
+  const [mem, setMem] = useState<MemRestartConfig>({ enabled: false, threshold_gb: 12, broadcast: "", delay_seconds: 0 });
+  const [memNow, setMemNow] = useState<number | null>(null);
+  const [memDirty, setMemDirty] = useState(false);
+  const [memSaving, setMemSaving] = useState(false);
 
   const load = useCallback(() => {
     api.history().then((r) => setHistory(r.history ?? [])).catch(() => {});
+    api.memRestart().then((r) => {
+      if (r.available) {
+        setMemNow(r.current_memory_bytes ?? null);
+        // Only sync the form from the server while the operator isn't
+        // mid-edit — a background poll must not clobber their typing.
+        setMemDirty((dirty) => { if (!dirty && r.config) setMem(r.config); return dirty; });
+      }
+    }).catch(() => {});
   }, []);
   useEffect(() => {
     load();
@@ -59,6 +71,23 @@ export function ServerAdmin() {
       api.updateCheck().then(setCheck).catch(() => {});
     }
   }, [events]);
+
+  const saveMem = async () => {
+    setMemSaving(true);
+    try {
+      const r = await api.setMemRestart(mem);
+      setMem(r.config);
+      setMemDirty(false);
+      flash("Memory auto-restart settings saved.");
+    } catch (e) {
+      flash(`Save failed: ${(e as Error).message}`);
+    } finally { setMemSaving(false); }
+  };
+
+  const editMem = (patch: Partial<MemRestartConfig>) => {
+    setMem((m) => ({ ...m, ...patch }));
+    setMemDirty(true);
+  };
 
   const doUpdate = async () => {
     if (!confirm(`Check Steam for a server update and install it if one exists?${updWarn ? ` Players will be warned${updDelay > 0 ? ` with ${updDelay}s notice` : ""}.` : " No player warning is configured."}\n\nProgress streams into Live activity below.`)) return;
@@ -179,6 +208,46 @@ export function ServerAdmin() {
             {updRunning ? "Update running…" : check?.update_available ? "Install update" : "Check & update"}
           </button>
           {updRunning && <div className="upd-running">Follow progress in Live activity below.</div>}
+        </div>
+
+        {/* Memory auto-restart */}
+        <div className="card span6">
+          <div className="card-label">Auto-restart on high memory</div>
+          <div className="upd-desc">
+            Palworld servers leak memory over time. When the game's memory
+            use crosses the threshold, Paladin saves the world and restarts
+            the server. Empty message and zero delay = immediate restart;
+            set them to warn players first.
+            {memNow !== null && <> Game is using <b>{(memNow / (1 << 30)).toFixed(1)} GB</b> right now.</>}
+          </div>
+          <label className="admin-check" style={{ marginBottom: 12 }}>
+            <input type="checkbox" checked={mem.enabled} onChange={(e) => editMem({ enabled: e.target.checked })} />
+            Enable memory-threshold restart
+          </label>
+          {mem.enabled && (
+            <div className="admin-warn-opts">
+              <div className="admin-delay">
+                <label>Threshold</label>
+                <input type="number" min={1} max={512} step={0.5} value={mem.threshold_gb}
+                  onChange={(e) => editMem({ threshold_gb: Math.max(0, +e.target.value) })} />
+                <span>GB</span>
+              </div>
+              <input className="admin-input" value={mem.broadcast}
+                onChange={(e) => editMem({ broadcast: e.target.value })}
+                placeholder="Warning message (empty = restart immediately)" />
+              {mem.broadcast && (
+                <div className="admin-delay">
+                  <label>Delay</label>
+                  <input type="number" min={0} max={600} value={mem.delay_seconds}
+                    onChange={(e) => editMem({ delay_seconds: Math.max(0, +e.target.value) })} />
+                  <span>seconds</span>
+                </div>
+              )}
+            </div>
+          )}
+          <button className="admin-btn" style={{ marginTop: 14 }} disabled={!memDirty || memSaving} onClick={saveMem}>
+            {memSaving ? "Saving…" : memDirty ? "Save settings" : "Saved"}
+          </button>
         </div>
 
         {/* History */}

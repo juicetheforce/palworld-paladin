@@ -54,6 +54,7 @@ const (
 	defJournal    = "/home/palworld/paladin-journal"
 	defSafetyHold = "/home/palworld/paladin-safety" // relocated pre-restore copies live here
 	defAuthFile   = "/home/palworld/paladin-config/auth.json"
+	defMemRestart = "/home/palworld/paladin-config/memrestart.json"
 	defWebAddr    = "127.0.0.1:8080"
 )
 
@@ -519,11 +520,45 @@ func cmdServe(args []string) error {
 	// banlist.txt lives in SaveGames/ (parent of the world dirs).
 	banlistPath := filepath.Join(filepath.Dir(d.worldDir), "banlist.txt")
 
+	// Memory-threshold auto-restart (§6.1 rev 16): the supervisor watches
+	// the game unit's cgroup memory and fires a graceful restart when the
+	// operator-configured threshold trips. recordAction is late-bound: the
+	// action logs to the history card, but the web server is constructed
+	// after the supervisor — the indirection resolves at fire time.
+	var recordAction func(action, detail string, ok bool)
+	memCfg := func() supervise.RestartConfig { return supervise.RestartConfig{} }
+	sup := supervise.NewSupervisor(d.unit, supervise.Config{
+		OnEvent: func(e supervise.Event) {
+			if e.Kind == supervise.EventRAMThresholdExceeded {
+				hub.Progress("mem-restart", "trigger",
+					fmt.Sprintf("Memory threshold exceeded (%.1f GB in use) — restarting to reclaim it", float64(e.Memory)/float64(1<<30)))
+			}
+		},
+		RestartAction: func(ctx context.Context) {
+			runMemRestart(ctx, d, hub, memCfg(), func(a, det string, ok bool) {
+				if recordAction != nil {
+					recordAction(a, det, ok)
+				}
+			})
+		},
+	})
+	go sup.Run(context.Background())
+
+	memStore, err := supervise.LoadRestartConfigStore(defMemRestart, func(rc supervise.RestartConfig) {
+		sup.SetMemThreshold(rc.ThresholdBytes())
+	})
+	if err != nil {
+		return err
+	}
+	memCfg = memStore.Get
+
 	// One engine for all web-triggered maintenance cycles (I1: one lock).
 	// Step events bridge to the hub; the terminal event is published by
-	// each runner with operation-appropriate semantics.
+	// each runner with operation-appropriate semantics. The REAL supervisor
+	// is the engine's Susp — invariant I2 (no threshold firing mid-cycle)
+	// is now live, not a noop.
 	serveEngine, err := maintain.NewEngine(maintain.Config{
-		API: d.api, Unit: d.unit, Susp: noopSusp{}, Journal: d.fj,
+		API: d.api, Unit: d.unit, Susp: sup, Journal: d.fj,
 		OnEvent:   bridgeEngineEvents(hub),
 		DiskCheck: backup.DiskCheckFunc(d.worldDir, 2.0),
 	})
@@ -555,9 +590,18 @@ func cmdServe(args []string) error {
 			}
 			return steam.RemoteBuildID(c, scmd, steam.PalworldAppID)
 		},
+		MemRestart: memStore,
+		UnitMemory: func(ctx context.Context) (uint64, error) {
+			p, err := d.unit.Show(ctx)
+			if err != nil {
+				return 0, err
+			}
+			return p.MemoryCurrent, nil
+		},
 		Hub:    hub,
 		Static: webserv.Assets(),
 	})
+	recordAction = srv.RecordAction
 	if auth.NeedsSetup() {
 		fmt.Println("First run: open the web UI to create your admin password.")
 	}
@@ -685,4 +729,64 @@ func makeUpdateRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.Up
 		}
 		return webserv.UpdateResult{Status: string(out.Status), Detail: out.Detail, UpToDate: p.UpToDate}
 	}
+}
+
+// runMemRestart is the graceful action fired when the memory threshold
+// trips: (optional) warn players and wait, always force a world save, then
+// restart and confirm readiness. The graceful-vs-immediate choice is
+// carried entirely by the config fields (§6.1 rev 16: empty broadcast and
+// zero delay = immediate).
+func runMemRestart(ctx context.Context, d *deps, hub *events.Hub, cfg supervise.RestartConfig, record func(string, string, bool)) {
+	op := "mem-restart"
+	fail := func(stage string, err error) {
+		hub.Error(op, stage+" failed: "+err.Error())
+		record("memory restart", stage+" failed: "+err.Error(), false)
+	}
+
+	if cfg.Broadcast != "" {
+		bctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		if err := d.api.Announce(bctx, cfg.Broadcast); err == nil {
+			hub.Progress(op, "announce", "Warned players: "+cfg.Broadcast)
+		}
+		cancel()
+		if cfg.DelaySeconds > 0 {
+			hub.Progress(op, "delay", fmt.Sprintf("Waiting %ds before restart…", cfg.DelaySeconds))
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Duration(cfg.DelaySeconds) * time.Second):
+			}
+		}
+	}
+
+	// Always save first: nobody loses progress to a leak restart.
+	hub.Progress(op, "save", "Saving world…")
+	sctx, scancel := context.WithTimeout(ctx, 60*time.Second)
+	err := d.api.Save(sctx)
+	scancel()
+	if err != nil {
+		// Report but continue: a restart that reclaims memory is still
+		// better than a server about to OOM; the save failure is loud.
+		hub.Error(op, "world save failed (continuing with restart): "+err.Error())
+	}
+
+	hub.Progress(op, "restart", "Restarting server to reclaim memory…")
+	rctx, rcancel := context.WithTimeout(ctx, 90*time.Second)
+	err = d.unit.Restart(rctx)
+	rcancel()
+	if err != nil {
+		fail("restart", err)
+		return
+	}
+
+	hub.Progress(op, "start", "Waiting for server to respond…")
+	wctx, wcancel := context.WithTimeout(ctx, 5*time.Minute)
+	err = d.api.WaitReady(wctx, 2*time.Second)
+	wcancel()
+	if err != nil {
+		fail("readiness", err)
+		return
+	}
+	hub.Done(op, "Memory restart complete — server is back up.", true)
+	record("memory restart", "threshold restart completed, server responding", true)
 }

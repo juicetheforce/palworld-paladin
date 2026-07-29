@@ -41,6 +41,10 @@ type Config struct {
 	MemThresholdBytes uint64
 	// CheckInterval between polls. Default 15s.
 	CheckInterval time.Duration
+	// Cooldown: minimum time between threshold firings, regardless of
+	// re-arming. Guards against a restart loop when the threshold is
+	// misconfigured below the server's idle memory. Default 10m.
+	Cooldown time.Duration
 	// OnEvent receives every observation (for the store/audit log).
 	// Called from the supervision goroutine; must not block long.
 	OnEvent func(Event)
@@ -61,8 +65,10 @@ type Supervisor struct {
 	cfg  Config
 
 	mu        sync.Mutex
-	suspended int  // suspension is counted: nested Suspend/Resume pairs are safe
-	armed     bool // RAM trigger armed (re-arms only after dropping below threshold)
+	suspended int    // suspension is counted: nested Suspend/Resume pairs are safe
+	armed     bool   // RAM trigger armed (re-arms only after dropping below threshold)
+	threshold uint64 // runtime-settable (web UI); 0 disables the RAM watcher
+	lastFire  time.Time
 }
 
 // NewSupervisor builds a Supervisor around a UnitController.
@@ -70,7 +76,27 @@ func NewSupervisor(unit *UnitController, cfg Config) *Supervisor {
 	if cfg.CheckInterval <= 0 {
 		cfg.CheckInterval = 15 * time.Second
 	}
-	return &Supervisor{unit: unit, cfg: cfg, armed: true}
+	if cfg.Cooldown <= 0 {
+		cfg.Cooldown = 10 * time.Minute
+	}
+	return &Supervisor{unit: unit, cfg: cfg, armed: true, threshold: cfg.MemThresholdBytes}
+}
+
+// SetMemThreshold changes the RAM threshold at runtime (0 disables). The
+// trigger re-arms on any change so a new threshold takes effect on the
+// next poll regardless of prior latch state.
+func (s *Supervisor) SetMemThreshold(bytes uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.threshold = bytes
+	s.armed = true
+}
+
+// MemThreshold reports the current runtime threshold.
+func (s *Supervisor) MemThreshold() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.threshold
 }
 
 // Suspend disables all supervision effects until a matching Resume.
@@ -136,21 +162,26 @@ func (s *Supervisor) check(ctx context.Context) {
 			Detail: "ActiveState=" + p.ActiveState + " SubState=" + p.SubState})
 		return
 	}
-	if s.cfg.MemThresholdBytes == 0 {
+	s.mu.Lock()
+	threshold := s.threshold
+	if threshold == 0 {
+		s.mu.Unlock()
 		return
 	}
-	s.mu.Lock()
 	armed := s.armed
-	over := p.MemoryCurrent > s.cfg.MemThresholdBytes
+	over := p.MemoryCurrent > threshold
+	inCooldown := !s.lastFire.IsZero() && time.Since(s.lastFire) < s.cfg.Cooldown
+	fire := over && armed && !inCooldown
 	switch {
-	case over && armed:
+	case fire:
 		s.armed = false // latch: one firing per excursion above threshold
+		s.lastFire = time.Now()
 	case !over && !armed:
 		s.armed = true
 	}
 	s.mu.Unlock()
 
-	if over && armed {
+	if fire {
 		s.emit(Event{Kind: EventRAMThresholdExceeded, Memory: p.MemoryCurrent,
 			Detail: "restart action invoked"})
 		if s.cfg.RestartAction != nil {

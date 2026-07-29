@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/juicetheforce/palworld-paladin/internal/backup"
+	"github.com/juicetheforce/palworld-paladin/internal/supervise"
 )
 
 // Lifecycle is the slice of the supervisor the Server Admin page needs
@@ -376,4 +377,69 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	writeJSON(w, http.StatusAccepted, map[string]bool{"accepted": true})
+}
+
+// ---- memory-threshold auto-restart config ----
+
+// MemRestartStore is the slice of the config store the page needs.
+// *supervise.RestartConfigStore satisfies it.
+type MemRestartStore interface {
+	Get() supervise.RestartConfig
+	Set(supervise.RestartConfig) error
+}
+
+// UnitMemoryFunc reports the game unit's current memory use (cgroup
+// MemoryCurrent), shown beside the threshold field so the operator sets it
+// against reality rather than guessing.
+type UnitMemoryFunc func(ctx context.Context) (uint64, error)
+
+func (s *Server) handleMemRestartGet(w http.ResponseWriter, r *http.Request) {
+	if s.memRestart == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"available": false})
+		return
+	}
+	resp := map[string]any{"available": true, "config": s.memRestart.Get()}
+	if s.unitMemory != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		if mem, err := s.unitMemory(ctx); err == nil {
+			resp["current_memory_bytes"] = mem
+		}
+		cancel()
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleMemRestartSet(w http.ResponseWriter, r *http.Request) {
+	if s.memRestart == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "not available"})
+		return
+	}
+	var cfg supervise.RestartConfig
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
+		return
+	}
+	if err := s.memRestart.Set(cfg); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	detail := "disabled"
+	if cfg.Enabled {
+		detail = fmt.Sprintf("threshold %.1f GB", cfg.ThresholdGB)
+		if cfg.Broadcast != "" {
+			detail += fmt.Sprintf(", warn + %ds delay", cfg.DelaySeconds)
+		} else {
+			detail += ", immediate"
+		}
+	}
+	s.recordAction("memory auto-restart", detail, true)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "config": s.memRestart.Get()})
+}
+
+// RecordAction is the exported history+live-stream hook for actions that
+// originate outside the HTTP layer (e.g. the memory-threshold restart,
+// which the supervisor fires on its own). Same consistency guarantee as
+// handler-driven actions: it lands in Recent actions AND Live activity.
+func (s *Server) RecordAction(action, detail string, ok bool) {
+	s.recordAction(action, detail, ok)
 }

@@ -153,6 +153,7 @@ func supervisorWith(mem func(call int) string, threshold uint64) (*Supervisor, *
 	restarts := 0
 	s := NewSupervisor(u, Config{
 		MemThresholdBytes: threshold,
+		Cooldown:          time.Nanosecond, // effectively off; cooldown tested separately
 		OnEvent:           func(e Event) { events = append(events, e) },
 		RestartAction:     func(context.Context) { restarts++ },
 	})
@@ -242,5 +243,60 @@ func TestUnitDownIsObservedNotActedOn(t *testing.T) {
 	}
 	if len(events) != 1 || events[0].Kind != EventUnitDown {
 		t.Fatalf("want one EventUnitDown, got %+v", events)
+	}
+}
+
+func TestCooldownBlocksRapidRefires(t *testing.T) {
+	// over, below (re-arms), over again — but within the cooldown window,
+	// so the second excursion must NOT fire. This is the restart-loop
+	// guard for a threshold misconfigured below idle memory.
+	seq := []string{"900", "100", "901", "950"}
+	fr := &fakeRunner{show: func(n int) string {
+		i := n
+		if i >= len(seq) {
+			i = len(seq) - 1
+		}
+		return showOut("active", "running", 1, seq[i])
+	}}
+	u := &UnitController{Unit: "x", Runner: fr}
+	restarts := 0
+	s := NewSupervisor(u, Config{
+		MemThresholdBytes: 500,
+		Cooldown:          time.Hour,
+		RestartAction:     func(context.Context) { restarts++ },
+	})
+	for range seq {
+		s.check(context.Background())
+	}
+	if restarts != 1 {
+		t.Fatalf("cooldown must block the rapid second fire: got %d restarts", restarts)
+	}
+}
+
+func TestSetMemThresholdAtRuntime(t *testing.T) {
+	fr := &fakeRunner{show: func(int) string { return showOut("active", "running", 1, "800") }}
+	u := &UnitController{Unit: "x", Runner: fr}
+	restarts := 0
+	s := NewSupervisor(u, Config{
+		MemThresholdBytes: 0, // disabled at construction
+		Cooldown:          time.Nanosecond,
+		RestartAction:     func(context.Context) { restarts++ },
+	})
+	s.check(context.Background())
+	if restarts != 0 {
+		t.Fatal("disabled watcher must not fire")
+	}
+	s.SetMemThreshold(500) // enable at runtime, below current usage
+	s.check(context.Background())
+	if restarts != 1 {
+		t.Fatalf("runtime-set threshold must take effect: got %d", restarts)
+	}
+	if s.MemThreshold() != 500 {
+		t.Fatal("MemThreshold getter")
+	}
+	s.SetMemThreshold(0) // disable again
+	s.check(context.Background())
+	if restarts != 1 {
+		t.Fatal("zero threshold must disable the watcher")
 	}
 }

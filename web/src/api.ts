@@ -80,6 +80,19 @@ export interface UpdateCheckResponse {
   error?: string;
 }
 
+export interface MemRestartConfig {
+  enabled: boolean;
+  threshold_gb: number;
+  broadcast: string;
+  delay_seconds: number;
+}
+
+export interface MemRestartResponse {
+  available: boolean;
+  config?: MemRestartConfig;
+  current_memory_bytes?: number;
+}
+
 export interface HistoryEntry {
   time: string;
   action: string;
@@ -138,6 +151,13 @@ export const api = {
   adminBackups: () => fetch("/api/admin/backups").then(j<{ backups: BackupInfo[]; partials: number }>),
   deleteBackup: (id: string) => fetch(`/api/admin/backups/${id}`, { method: "DELETE" }).then(j<{ ok: boolean }>),
   history: () => fetch("/api/admin/history").then(j<{ history: HistoryEntry[] }>),
+  memRestart: () => fetch("/api/admin/mem-restart").then(j<MemRestartResponse>),
+  setMemRestart: (config: MemRestartConfig) =>
+    fetch("/api/admin/mem-restart", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config),
+    }).then(j<{ ok: boolean; config: MemRestartConfig }>),
   updateCheck: () => fetch("/api/admin/update-check").then(j<UpdateCheckResponse>),
   updateCheckRefresh: () => fetch("/api/admin/update-check", { method: "POST" }).then(j<{ accepted: boolean }>),
   update: (broadcast = "", delay_seconds = 0) =>

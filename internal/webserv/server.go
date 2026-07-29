@@ -51,6 +51,8 @@ type Server struct {
 	updateBusy  atomic.Bool
 	localBuild  LocalBuildFunc
 	remoteBuild RemoteBuildFunc
+	memRestart  MemRestartStore
+	unitMemory  UnitMemoryFunc
 	check       updateCheck
 	actions     *actionLog
 	hub         *events.Hub
@@ -74,6 +76,8 @@ type Config struct {
 	Update      UpdateRunner
 	LocalBuild  LocalBuildFunc
 	RemoteBuild RemoteBuildFunc
+	MemRestart  MemRestartStore
+	UnitMemory  UnitMemoryFunc
 	Hub         *events.Hub
 	Static      fs.FS
 }
@@ -86,6 +90,7 @@ func New(cfg Config) *Server {
 		broadcaster: cfg.Broadcaster, backupMgr: cfg.BackupMgr, readiness: cfg.Readiness,
 		update:     cfg.Update,
 		localBuild: cfg.LocalBuild, remoteBuild: cfg.RemoteBuild,
+		memRestart: cfg.MemRestart, unitMemory: cfg.UnitMemory,
 		actions: newActionLog(100), hub: cfg.Hub, static: cfg.Static, mux: http.NewServeMux(),
 	}
 	s.routes()
@@ -117,6 +122,8 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/admin/update", s.requireAuth(http.HandlerFunc(s.handleUpdate)))
 	s.mux.Handle("GET /api/admin/update-check", s.requireAuth(http.HandlerFunc(s.handleUpdateCheckGet)))
 	s.mux.Handle("POST /api/admin/update-check", s.requireAuth(http.HandlerFunc(s.handleUpdateCheckRefresh)))
+	s.mux.Handle("GET /api/admin/mem-restart", s.requireAuth(http.HandlerFunc(s.handleMemRestartGet)))
+	s.mux.Handle("PUT /api/admin/mem-restart", s.requireAuth(http.HandlerFunc(s.handleMemRestartSet)))
 
 	// Static SPA fallback for everything else.
 	if s.static != nil {

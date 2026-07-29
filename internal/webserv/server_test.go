@@ -13,6 +13,7 @@ import (
 
 	"github.com/juicetheforce/palworld-paladin/internal/events"
 	"github.com/juicetheforce/palworld-paladin/internal/palapi"
+	"github.com/juicetheforce/palworld-paladin/internal/supervise"
 )
 
 type fakeStatus struct {
@@ -547,5 +548,71 @@ func TestUpdateCheckLazyRefreshAndCache(t *testing.T) {
 	})
 	if body.UpdateAvailable {
 		t.Fatal("matching buildids must report up to date")
+	}
+}
+
+// ---- memory auto-restart config ----
+
+type fakeMemStore struct {
+	cfg    supervise.RestartConfig
+	setErr error
+}
+
+func (f *fakeMemStore) Get() supervise.RestartConfig { return f.cfg }
+func (f *fakeMemStore) Set(c supervise.RestartConfig) error {
+	if f.setErr != nil {
+		return f.setErr
+	}
+	f.cfg = c
+	return nil
+}
+
+func TestMemRestartGetAndSet(t *testing.T) {
+	auth, _ := LoadAuthStore(filepath.Join(t.TempDir(), "auth.json"))
+	auth.SetAdminPassword("admin", "hunter2hunter2")
+	store := &fakeMemStore{cfg: supervise.RestartConfig{Enabled: false, ThresholdGB: 12}}
+	s := New(Config{
+		Auth: auth, Sessions: NewSessionStore(0),
+		Status:     fakeStatus{info: &palapi.Info{}},
+		MemRestart: store,
+		UnitMemory: func(context.Context) (uint64, error) { return 3 << 30, nil },
+		Static:     fstest.MapFS{"index.html": {Data: []byte("x")}},
+	})
+	h := s.Handler()
+	ck := authedCookie(t, h)
+
+	// GET: config + live memory.
+	resp := do(t, h, "GET", "/api/admin/mem-restart", "", ck)
+	var body struct {
+		Available          bool                    `json:"available"`
+		Config             supervise.RestartConfig `json:"config"`
+		CurrentMemoryBytes uint64                  `json:"current_memory_bytes"`
+	}
+	json.NewDecoder(resp.Body).Decode(&body)
+	if !body.Available || body.Config.ThresholdGB != 12 || body.CurrentMemoryBytes != 3<<30 {
+		t.Fatalf("bad GET: %+v", body)
+	}
+
+	// PUT: valid config saves and lands in history.
+	resp = do(t, h, "PUT", "/api/admin/mem-restart",
+		`{"enabled":true,"threshold_gb":10,"broadcast":"restarting for memory","delay_seconds":30}`, ck)
+	if resp.StatusCode != 200 {
+		t.Fatalf("valid PUT must 200, got %d", resp.StatusCode)
+	}
+	if !store.cfg.Enabled || store.cfg.ThresholdGB != 10 {
+		t.Fatalf("store not updated: %+v", store.cfg)
+	}
+	resp = do(t, h, "GET", "/api/admin/history", "", ck)
+	var hist struct{ History []LogEntry }
+	json.NewDecoder(resp.Body).Decode(&hist)
+	if len(hist.History) == 0 || hist.History[0].Action != "memory auto-restart" {
+		t.Fatalf("config change must be recorded: %+v", hist.History)
+	}
+
+	// PUT: the store's validation rejection surfaces as 400.
+	store.setErr = supervise.RestartConfig{Enabled: true, ThresholdGB: 0.2}.Validate()
+	resp = do(t, h, "PUT", "/api/admin/mem-restart", `{"enabled":true,"threshold_gb":0.2}`, ck)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid config must 400, got %d", resp.StatusCode)
 	}
 }
