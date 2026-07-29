@@ -4,6 +4,7 @@ import { Sparkline } from "./Sparkline";
 import { usePrefs } from "./usePrefs";
 import { CustomizeMenu } from "./CustomizeMenu";
 import { Players } from "./Players";
+import { OfflineNotice } from "./OfflineNotice";
 import { ServerAdmin } from "./ServerAdmin";
 
 export function App() {
@@ -199,11 +200,11 @@ function Dashboard() {
       </div>
 
       {!st.online && (
-        <div className="offline-banner">Server is not responding. {st.error}</div>
+        <OfflineNotice what="game server metrics" />
       )}
 
       <div className="grid">
-        {isVisible("fps") && (
+        {st.online && isVisible("fps") && (
         <div className="card hero">
           <FpsDial fps={st.fps} />
           <div className="dial-caption">avg {st.fps_average.toFixed(1)} · frame {st.frame_time_ms.toFixed(1)} ms</div>
@@ -214,11 +215,11 @@ function Dashboard() {
         </div>
         )}
 
-        {isVisible("players") && <StatCard className="span4" label="Players online" value={`${st.players}`}
+        {st.online && isVisible("players") && <StatCard className="span4" label="Players online" value={`${st.players}`}
           unit={`/ ${st.max_players}`} sub={`${st.bases} bases · day ${st.days}`} />}
-        {isVisible("uptime") && <StatCard className="span4" label="Uptime" value={formatUptime(st.uptime_sec)} sub="since last start" />}
+        {st.online && isVisible("uptime") && <StatCard className="span4" label="Uptime" value={formatUptime(st.uptime_sec)} sub="since last start" />}
 
-        {isVisible("server") && (
+        {st.online && isVisible("server") && (
         <div className="card span4">
           <div className="card-label">Server</div>
           <div className="server-name">{st.server_name || "—"}</div>

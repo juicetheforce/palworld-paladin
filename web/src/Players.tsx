@@ -1,18 +1,18 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, RosterPlayer, BanEntry } from "./api";
+import { OfflineNotice } from "./OfflineNotice";
 
 export function Players() {
   const [players, setPlayers] = useState<RosterPlayer[]>([]);
   const [bans, setBans] = useState<BanEntry[]>([]);
   const [online, setOnline] = useState(true);
-  const [err, setErr] = useState("");
   const [historyTier, setHistoryTier] = useState(false);
   const [busy, setBusy] = useState<string>("");
 
   const load = useCallback(() => {
     api.players()
-      .then((r) => { setPlayers(r.players ?? []); setOnline(r.online); setHistoryTier(r.history_tier); setErr(r.error || ""); })
-      .catch((e) => setErr((e as Error).message));
+      .then((r) => { setPlayers(r.players ?? []); setOnline(r.online); setHistoryTier(r.history_tier); })
+      .catch(() => setOnline(false));
     api.bans().then((r) => setBans(r.bans ?? [])).catch(() => {});
   }, []);
 
@@ -50,8 +50,8 @@ export function Players() {
         </span>
       </div>
 
-      {!online && <div className="offline-banner">Server is not responding. {err}</div>}
-
+      {!online ? <OfflineNotice what="player data" /> : (
+      <>
       {/* Roster table */}
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <table className="ptable">
@@ -119,6 +119,8 @@ export function Players() {
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </>
   );
 }

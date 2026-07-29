@@ -225,3 +225,21 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .history-action { font-weight: 600; color: var(--text); }
 .history-detail { color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-time { color: var(--text-faint); font-size: 11px; font-family: ui-monospace, monospace; }
+
+/* ---- offline notice (friendly server-stopped placeholder) ---- */
+.offline-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 56px 32px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius); gap: 10px;
+}
+.offline-state-icon { font-size: 40px; color: var(--text-faint); opacity: 0.6; }
+.offline-state-title { font-size: 18px; font-weight: 650; color: var(--text); }
+.offline-state-sub { font-size: 14px; color: var(--text-dim); max-width: 440px; line-height: 1.5; }
+
+/* ---- server state line + button auras ---- */
+.server-state-line { margin-bottom: 16px; }
+.server-state-line .pill.online { color: var(--good); }
+.server-state-line .pill.offline { color: var(--bad); }
+.admin-btn.lit-good { border-color: var(--good); color: var(--good); box-shadow: 0 0 0 1px var(--good), 0 0 16px -4px var(--good); }
+.admin-btn.lit-bad { border-color: var(--bad); color: var(--bad); box-shadow: 0 0 0 1px var(--bad), 0 0 16px -4px var(--bad); }
+.admin-btn:disabled.lit-good, .admin-btn:disabled.lit-bad { opacity: 0.85; }

@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
-import { api, BackupInfo, HistoryEntry } from "./api";
+import { api, HistoryEntry } from "./api";
+import { useServerState } from "./useServerState";
 
 export function ServerAdmin() {
-  const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [broadcastMsg, setBroadcastMsg] = useState("");
   const [warnMsg, setWarnMsg] = useState("Server maintenance shortly — please reach a safe spot.");
@@ -10,9 +10,9 @@ export function ServerAdmin() {
   const [useWarn, setUseWarn] = useState(true);
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
+  const { online } = useServerState();
 
   const load = useCallback(() => {
-    api.adminBackups().then((r) => setBackups(r.backups ?? [])).catch(() => {});
     api.history().then((r) => setHistory(r.history ?? [])).catch(() => {});
   }, []);
   useEffect(() => {
@@ -46,15 +46,7 @@ export function ServerAdmin() {
 
   const doSave = async () => {
     setBusy("save");
-    try { await api.save(); flash("World saved."); load(); }
-    catch (e) { flash(`Failed: ${(e as Error).message}`); }
-    finally { setBusy(""); }
-  };
-
-  const delBackup = async (id: string) => {
-    if (!confirm(`Delete backup ${id}? This cannot be undone.`)) return;
-    setBusy("del" + id);
-    try { await api.deleteBackup(id); flash("Backup deleted."); load(); }
+    try { await api.save(); flash("World flushed to disk (game save files updated)."); load(); }
     catch (e) { flash(`Failed: ${(e as Error).message}`); }
     finally { setBusy(""); }
   };
@@ -73,11 +65,20 @@ export function ServerAdmin() {
         {/* Lifecycle */}
         <div className="card span6">
           <div className="card-label">Server control</div>
+          <div className="server-state-line">
+            <span className={"pill " + (online === null ? "" : online ? "online" : "offline")}>
+              <span className="dot" />
+              {online === null ? "Checking…" : online ? "Server running" : "Server stopped"}
+            </span>
+          </div>
           <div className="admin-btn-row">
-            <button className="admin-btn start" disabled={busy === "start"} onClick={() => lifecycle("start")}>Start</button>
-            <button className="admin-btn restart" disabled={busy === "restart"} onClick={() => lifecycle("restart")}>Restart</button>
-            <button className="admin-btn stop" disabled={busy === "stop"} onClick={() => lifecycle("stop")}>Stop</button>
-            <button className="admin-btn" disabled={busy === "save"} onClick={doSave}>Force save</button>
+            <button className={"admin-btn start" + (online ? " lit-good" : "")}
+              disabled={busy === "start" || online === true} onClick={() => lifecycle("start")}>Start</button>
+            <button className="admin-btn restart"
+              disabled={busy === "restart" || online === false} onClick={() => lifecycle("restart")}>Restart</button>
+            <button className={"admin-btn stop" + (online === false ? " lit-bad" : "")}
+              disabled={busy === "stop" || online === false} onClick={() => lifecycle("stop")}>Stop</button>
+            <button className="admin-btn" disabled={busy === "save" || online === false} onClick={doSave}>Force save</button>
           </div>
           <label className="admin-check">
             <input type="checkbox" checked={useWarn} onChange={(e) => setUseWarn(e.target.checked)} />
@@ -103,24 +104,21 @@ export function ServerAdmin() {
           <button className="admin-btn" style={{ marginTop: 12 }} disabled={busy === "broadcast" || !broadcastMsg.trim()} onClick={doBroadcast}>Send broadcast</button>
         </div>
 
-        {/* Backups */}
-        <div className="card span6">
-          <div className="card-label">Backups ({backups.length})</div>
-          <div className="admin-backups">
-            {backups.length === 0 && <div className="pempty">No backups yet.</div>}
-            {backups.map((b) => (
-              <div key={b.id} className="backup-row">
-                <div>
-                  <div className="backup-id">{b.id}</div>
-                  <div className="backup-meta">{b.trigger} · {fmtSize(b.size_bytes)} · {new Date(b.created).toLocaleString()}</div>
-                </div>
-                <button className="act ban" disabled={busy === "del" + b.id} onClick={() => delBackup(b.id)}>Delete</button>
-              </div>
-            ))}
+          <div className="server-state-line">
+            <span className={"pill " + (online === null ? "" : online ? "online" : "offline")}>
+              <span className="dot" />
+              {online === null ? "Checking…" : online ? "Server running" : "Server stopped"}
+            </span>
           </div>
-        </div>
-
-        {/* History */}
+          <div className="admin-btn-row">
+            <button className={"admin-btn start" + (online ? " lit-good" : "")}
+              disabled={busy === "start" || online === true} onClick={() => lifecycle("start")}>Start</button>
+            <button className="admin-btn restart"
+              disabled={busy === "restart" || online === false} onClick={() => lifecycle("restart")}>Restart</button>
+            <button className={"admin-btn stop" + (online === false ? " lit-bad" : "")}
+              disabled={busy === "stop" || online === false} onClick={() => lifecycle("stop")}>Stop</button>
+            <button className="admin-btn" disabled={busy === "save" || online === false} onClick={doSave}>Force save</button>
+          </div>        {/* History */}
         <div className="card span6">
           <div className="card-label">Recent actions</div>
           <div className="admin-history">
@@ -140,9 +138,4 @@ export function ServerAdmin() {
   );
 }
 
-function fmtSize(b: number): string {
-  if (b >= 1 << 30) return (b / (1 << 30)).toFixed(1) + " GB";
-  if (b >= 1 << 20) return (b / (1 << 20)).toFixed(1) + " MB";
-  if (b >= 1 << 10) return (b / (1 << 10)).toFixed(0) + " KB";
-  return b + " B";
-}
+
