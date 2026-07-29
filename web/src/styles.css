@@ -273,3 +273,17 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 /* ---- server update card ---- */
 .upd-desc { font-size: 13px; color: var(--text-dim); line-height: 1.55; margin-bottom: 14px; }
 .upd-running { margin-top: 10px; font-size: 12px; color: var(--accent); }
+
+/* ---- update availability ---- */
+.upd-status { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.upd-current { display: flex; align-items: baseline; gap: 10px; }
+.upd-k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-faint); }
+.upd-v { font-family: ui-monospace, monospace; font-size: 13px; color: var(--text); }
+.upd-badge { font-size: 12px; padding: 5px 10px; border-radius: 7px; width: fit-content; }
+.upd-badge a { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.upd-badge.checking { background: var(--surface-2); color: var(--text-dim); }
+.upd-badge.idle { background: var(--surface-2); color: var(--text-dim); }
+.upd-badge.current { background: color-mix(in srgb, var(--good) 12%, transparent); color: var(--good); }
+.upd-badge.avail { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); font-weight: 650; }
+.upd-badge.err { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+.admin-btn.lit-warn { border-color: var(--warn); color: var(--warn); box-shadow: 0 0 0 1px var(--warn), 0 0 16px -4px var(--warn); }

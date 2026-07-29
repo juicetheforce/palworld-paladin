@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { api, HistoryEntry } from "./api";
+import { api, HistoryEntry, UpdateCheckResponse } from "./api";
 import { useServerState } from "./useServerState";
 import { useEventStream } from "./useEventStream";
 import { LiveLog } from "./LiveLog";
@@ -12,11 +12,12 @@ export function ServerAdmin() {
   const [useWarn, setUseWarn] = useState(true);
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
-  const { online } = useServerState();
+  const { online, version } = useServerState();
   const { events, connected, clear } = useEventStream();
   const [updWarn, setUpdWarn] = useState("Server updating shortly — you will be disconnected briefly.");
   const [updDelay, setUpdDelay] = useState(60);
   const [updRunning, setUpdRunning] = useState(false);
+  const [check, setCheck] = useState<UpdateCheckResponse | null>(null);
 
   const load = useCallback(() => {
     api.history().then((r) => setHistory(r.history ?? [])).catch(() => {});
@@ -27,6 +28,26 @@ export function ServerAdmin() {
     return () => clearInterval(id);
   }, [load]);
 
+  // Update-availability: fetch on page load (the backend lazily refreshes
+  // a stale cache); poll while a check is in flight so the card updates
+  // when the ~30-90s steamcmd query completes.
+  useEffect(() => {
+    let alive = true;
+    const tick = () => api.updateCheck().then((r) => alive && setCheck(r)).catch(() => {});
+    tick();
+    const id = setInterval(() => {
+      if (check?.checking || updRunning) tick();
+    }, 8000);
+    return () => { alive = false; clearInterval(id); };
+  }, [check?.checking, updRunning]);
+
+  const checkNow = async () => {
+    try {
+      await api.updateCheckRefresh();
+      setCheck((c) => (c ? { ...c, checking: true } : c));
+    } catch { /* surfaced by next poll */ }
+  };
+
   const flash = (m: string) => { setNote(m); setTimeout(() => setNote(""), 4000); };
 
   // The update runs in the background; its end is signalled by a terminal
@@ -35,6 +56,7 @@ export function ServerAdmin() {
     const last = events[events.length - 1];
     if (last && last.op === "update" && (last.kind === "done" || last.kind === "error")) {
       setUpdRunning(false);
+      api.updateCheck().then(setCheck).catch(() => {});
     }
   }, [events]);
 
@@ -134,10 +156,17 @@ export function ServerAdmin() {
         {/* Server update */}
         <div className="card span6">
           <div className="card-label">Server update</div>
+          <div className="upd-status">
+            <div className="upd-current">
+              <span className="upd-k">Current</span>
+              <span className="upd-v">{version || "—"}{check?.local_buildid ? ` · build ${check.local_buildid}` : ""}</span>
+            </div>
+            <UpdateBadge check={check} onCheckNow={checkNow} />
+          </div>
           <div className="upd-desc">
-            Checks Steam for a new server build. If one exists: warn players,
-            save the world, stop, back up, update via SteamCMD, restart, and
-            verify. If already up to date, nothing is touched.
+            If a new build exists: warn players, save the world, stop, back
+            up, update via SteamCMD, restart, and verify. If already up to
+            date, nothing is touched.
           </div>
           <input className="admin-input" value={updWarn} onChange={(e) => setUpdWarn(e.target.value)}
             placeholder="Warning message (empty = no warning)" />
@@ -146,8 +175,8 @@ export function ServerAdmin() {
             <input type="number" min={0} max={600} value={updDelay} onChange={(e) => setUpdDelay(Math.max(0, +e.target.value))} />
             <span>seconds</span>
           </div>
-          <button className="admin-btn" style={{ marginTop: 14 }} disabled={updRunning || online === false} onClick={doUpdate}>
-            {updRunning ? "Update running…" : "Check & update"}
+          <button className={"admin-btn" + (check?.update_available ? " lit-warn" : "")} style={{ marginTop: 14 }} disabled={updRunning || online === false} onClick={doUpdate}>
+            {updRunning ? "Update running…" : check?.update_available ? "Install update" : "Check & update"}
           </button>
           {updRunning && <div className="upd-running">Follow progress in Live activity below.</div>}
         </div>
@@ -180,3 +209,40 @@ export function ServerAdmin() {
 }
 
 
+
+function UpdateBadge({ check, onCheckNow }: { check: UpdateCheckResponse | null; onCheckNow: () => void }) {
+  if (!check) return null;
+  if (check.checking) {
+    return <span className="upd-badge checking">Checking Steam…</span>;
+  }
+  if (check.error) {
+    return (
+      <span className="upd-badge err" title={check.error}>
+        Check failed · <a onClick={onCheckNow}>retry</a>
+      </span>
+    );
+  }
+  if (!check.checked_at) {
+    return <span className="upd-badge idle"><a onClick={onCheckNow}>Check for updates</a></span>;
+  }
+  if (check.update_available) {
+    return (
+      <span className="upd-badge avail">
+        Update available: {check.local_buildid} → {check.remote_buildid}
+      </span>
+    );
+  }
+  return (
+    <span className="upd-badge current">
+      Up to date · checked {ago(check.checked_at)} · <a onClick={onCheckNow}>check now</a>
+    </span>
+  );
+}
+
+function ago(iso: string): string {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 90) return "just now";
+  if (s < 5400) return `${Math.round(s / 60)}m ago`;
+  if (s < 129600) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}

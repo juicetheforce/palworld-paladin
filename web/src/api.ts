@@ -71,6 +71,15 @@ export interface BackupInfo {
   size_bytes: number;
 }
 
+export interface UpdateCheckResponse {
+  local_buildid: string;
+  remote_buildid?: string;
+  update_available: boolean;
+  checked_at?: string;
+  checking: boolean;
+  error?: string;
+}
+
 export interface HistoryEntry {
   time: string;
   action: string;
@@ -129,6 +138,8 @@ export const api = {
   adminBackups: () => fetch("/api/admin/backups").then(j<{ backups: BackupInfo[]; partials: number }>),
   deleteBackup: (id: string) => fetch(`/api/admin/backups/${id}`, { method: "DELETE" }).then(j<{ ok: boolean }>),
   history: () => fetch("/api/admin/history").then(j<{ history: HistoryEntry[] }>),
+  updateCheck: () => fetch("/api/admin/update-check").then(j<UpdateCheckResponse>),
+  updateCheckRefresh: () => fetch("/api/admin/update-check", { method: "POST" }).then(j<{ accepted: boolean }>),
   update: (broadcast = "", delay_seconds = 0) =>
     fetch("/api/admin/update", {
       method: "POST",

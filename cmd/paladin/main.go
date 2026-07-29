@@ -545,8 +545,18 @@ func cmdServe(args []string) error {
 		BackupMgr:   d.mgr,
 		Readiness:   d.api,
 		Update:      updateRunner,
-		Hub:         hub,
-		Static:      webserv.Assets(),
+		LocalBuild: func() (string, error) {
+			return steam.LocalBuildID(installDirFromWorld(d.worldDir), steam.PalworldAppID)
+		},
+		RemoteBuild: func(c context.Context) (string, error) {
+			scmd, err := steam.FindSteamCMD()
+			if err != nil {
+				return "", err
+			}
+			return steam.RemoteBuildID(c, scmd, steam.PalworldAppID)
+		},
+		Hub:    hub,
+		Static: webserv.Assets(),
 	})
 	if auth.NeedsSetup() {
 		fmt.Println("First run: open the web UI to create your admin password.")
@@ -603,15 +613,21 @@ func stepLabel(step string) string {
 // makeUpdateRunner builds the closure the web layer calls to run one full
 // server-update cycle. Steam deps are resolved per run (steamcmd path can
 // change; a missing steamcmd is a clean pre-check error, not a crash).
-func makeUpdateRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.UpdateRunner {
-	// Install root: worldDir is <install>/Pal/Saved/SaveGames/0/<GUID>,
-	// so the install dir is five levels up. The appmanifest lives at
-	// <install>/steamapps/appmanifest_2394010.acf (force_install_dir
-	// layout, which is how Paladin installs and adopts).
-	installDir := d.worldDir
+// installDirFromWorld derives the server install root from the world dir:
+// worldDir is <install>/Pal/Saved/SaveGames/0/<GUID>, so the install dir is
+// five levels up. The appmanifest lives at
+// <install>/steamapps/appmanifest_2394010.acf (force_install_dir layout,
+// which is how Paladin installs and adopts).
+func installDirFromWorld(worldDir string) string {
+	installDir := worldDir
 	for i := 0; i < 5; i++ {
 		installDir = filepath.Dir(installDir)
 	}
+	return installDir
+}
+
+func makeUpdateRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.UpdateRunner {
+	installDir := installDirFromWorld(d.worldDir)
 
 	return func(ctx context.Context, broadcast string, delaySec int) webserv.UpdateResult {
 		steamcmd, err := steam.FindSteamCMD()

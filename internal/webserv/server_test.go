@@ -486,3 +486,66 @@ func TestUpdateEndpoint(t *testing.T) {
 		return len(body.History) > 0 && body.History[0].Action == "update"
 	})
 }
+
+// ---- update check ----
+
+func TestUpdateCheckLazyRefreshAndCache(t *testing.T) {
+	auth, _ := LoadAuthStore(filepath.Join(t.TempDir(), "auth.json"))
+	auth.SetAdminPassword("admin", "hunter2hunter2")
+	remoteCalls := 0
+	remoteC := make(chan string, 2)
+	s := New(Config{
+		Auth: auth, Sessions: NewSessionStore(0),
+		Status:     fakeStatus{info: &palapi.Info{}},
+		LocalBuild: func() (string, error) { return "111", nil },
+		RemoteBuild: func(context.Context) (string, error) {
+			remoteCalls++
+			return <-remoteC, nil
+		},
+		Static: fstest.MapFS{"index.html": {Data: []byte("x")}},
+	})
+	h := s.Handler()
+	ck := authedCookie(t, h)
+
+	// First GET: no cache → kicks a background check, reports checking.
+	resp := do(t, h, "GET", "/api/admin/update-check", "", ck)
+	var body updateCheckResponse
+	json.NewDecoder(resp.Body).Decode(&body)
+	if body.LocalBuildID != "111" || !body.Checking || body.CheckedAt != nil {
+		t.Fatalf("first GET should report checking with local id: %+v", body)
+	}
+
+	// Let the remote check complete with a NEWER buildid.
+	remoteC <- "222"
+	waitFor(t, 2*time.Second, func() bool {
+		resp := do(t, h, "GET", "/api/admin/update-check", "", ck)
+		json.NewDecoder(resp.Body).Decode(&body)
+		return !body.Checking && body.CheckedAt != nil
+	})
+	if !body.UpdateAvailable || body.RemoteBuildID != "222" {
+		t.Fatalf("newer remote must report update available: %+v", body)
+	}
+
+	// Subsequent GETs within the staleness window must NOT re-check.
+	calls := remoteCalls
+	do(t, h, "GET", "/api/admin/update-check", "", ck)
+	do(t, h, "GET", "/api/admin/update-check", "", ck)
+	if remoteCalls != calls {
+		t.Fatalf("fresh cache must not trigger re-checks (calls %d → %d)", calls, remoteCalls)
+	}
+
+	// Manual refresh forces a new check even with a fresh cache.
+	resp = do(t, h, "POST", "/api/admin/update-check", "", ck)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("refresh must 202, got %d", resp.StatusCode)
+	}
+	remoteC <- "111" // now matches local → up to date
+	waitFor(t, 2*time.Second, func() bool {
+		resp := do(t, h, "GET", "/api/admin/update-check", "", ck)
+		json.NewDecoder(resp.Body).Decode(&body)
+		return !body.Checking && body.RemoteBuildID == "111"
+	})
+	if body.UpdateAvailable {
+		t.Fatal("matching buildids must report up to date")
+	}
+}
