@@ -104,21 +104,7 @@ export function ServerAdmin() {
           <button className="admin-btn" style={{ marginTop: 12 }} disabled={busy === "broadcast" || !broadcastMsg.trim()} onClick={doBroadcast}>Send broadcast</button>
         </div>
 
-          <div className="server-state-line">
-            <span className={"pill " + (online === null ? "" : online ? "online" : "offline")}>
-              <span className="dot" />
-              {online === null ? "Checking…" : online ? "Server running" : "Server stopped"}
-            </span>
-          </div>
-          <div className="admin-btn-row">
-            <button className={"admin-btn start" + (online ? " lit-good" : "")}
-              disabled={busy === "start" || online === true} onClick={() => lifecycle("start")}>Start</button>
-            <button className="admin-btn restart"
-              disabled={busy === "restart" || online === false} onClick={() => lifecycle("restart")}>Restart</button>
-            <button className={"admin-btn stop" + (online === false ? " lit-bad" : "")}
-              disabled={busy === "stop" || online === false} onClick={() => lifecycle("stop")}>Stop</button>
-            <button className="admin-btn" disabled={busy === "save" || online === false} onClick={doSave}>Force save</button>
-          </div>        {/* History */}
+        {/* History */}
         <div className="card span6">
           <div className="card-label">Recent actions</div>
           <div className="admin-history">
