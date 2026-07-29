@@ -34,34 +34,43 @@ type HostProvider interface {
 // Server is Paladin's HTTP server: JSON API under /api, static SPA
 // everything else. LAN/localhost bind by default (§8).
 type Server struct {
-	auth     *AuthStore
-	sessions *SessionStore
-	status   StatusProvider
-	backups  BackupCounter
-	host     HostProvider
-	players  PlayerProvider
-	banList  BanListReader
-	static   fs.FS // the embedded built React bundle
-	mux      *http.ServeMux
+	auth        *AuthStore
+	sessions    *SessionStore
+	status      StatusProvider
+	backups     BackupCounter
+	host        HostProvider
+	players     PlayerProvider
+	banList     BanListReader
+	lifecycle   Lifecycle
+	broadcaster Broadcaster
+	backupMgr   BackupManager
+	actions     *actionLog
+	static      fs.FS // the embedded built React bundle
+	mux         *http.ServeMux
 }
 
 // Config wires a Server.
 type Config struct {
-	Auth     *AuthStore
-	Sessions *SessionStore
-	Status   StatusProvider
-	Backups  BackupCounter
-	Host     HostProvider
-	Players  PlayerProvider
-	BanList  BanListReader
-	Static   fs.FS
+	Auth        *AuthStore
+	Sessions    *SessionStore
+	Status      StatusProvider
+	Backups     BackupCounter
+	Host        HostProvider
+	Players     PlayerProvider
+	BanList     BanListReader
+	Lifecycle   Lifecycle
+	Broadcaster Broadcaster
+	BackupMgr   BackupManager
+	Static      fs.FS
 }
 
 func New(cfg Config) *Server {
 	s := &Server{
 		auth: cfg.Auth, sessions: cfg.Sessions, status: cfg.Status,
 		backups: cfg.Backups, host: cfg.Host, players: cfg.Players,
-		banList: cfg.BanList, static: cfg.Static, mux: http.NewServeMux(),
+		banList: cfg.BanList, lifecycle: cfg.Lifecycle,
+		broadcaster: cfg.Broadcaster, backupMgr: cfg.BackupMgr,
+		actions: newActionLog(100), static: cfg.Static, mux: http.NewServeMux(),
 	}
 	s.routes()
 	return s
@@ -82,6 +91,12 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/players", s.requireAuth(http.HandlerFunc(s.handlePlayers)))
 	s.mux.Handle("GET /api/bans", s.requireAuth(http.HandlerFunc(s.handleBanList)))
 	s.mux.Handle("POST /api/players/{action}", s.requireAuth(http.HandlerFunc(s.handlePlayerAction)))
+	s.mux.Handle("POST /api/admin/lifecycle/{action}", s.requireAuth(http.HandlerFunc(s.handleLifecycle)))
+	s.mux.Handle("POST /api/admin/broadcast", s.requireAuth(http.HandlerFunc(s.handleBroadcast)))
+	s.mux.Handle("POST /api/admin/save", s.requireAuth(http.HandlerFunc(s.handleSave)))
+	s.mux.Handle("GET /api/admin/backups", s.requireAuth(http.HandlerFunc(s.handleBackupList)))
+	s.mux.Handle("DELETE /api/admin/backups/{id}", s.requireAuth(http.HandlerFunc(s.handleBackupDelete)))
+	s.mux.Handle("GET /api/admin/history", s.requireAuth(http.HandlerFunc(s.handleHistory)))
 
 	// Static SPA fallback for everything else.
 	if s.static != nil {

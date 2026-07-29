@@ -179,6 +179,20 @@ func (m *Manager) Prune(keep int) (deleted []string, err error) {
 	return deleted, nil
 }
 
+// Delete removes a single backup by ID (manual delete from the Server
+// Admin page). Refuses to touch anything that isn't a finalized backup
+// directory under the root, as a guard against path surprises.
+func (m *Manager) Delete(id string) error {
+	if id == "" || strings.ContainsAny(id, "/\\") || strings.HasPrefix(id, ".") {
+		return fmt.Errorf("backup: invalid id %q", id)
+	}
+	e, err := m.Get(id) // confirms it exists and is a real catalog entry
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(e.Path)
+}
+
 // Count returns the number of finalized backups in the catalog (for the
 // dashboard card). Partial/interrupted dirs are not counted.
 func (m *Manager) Count() (int, error) {

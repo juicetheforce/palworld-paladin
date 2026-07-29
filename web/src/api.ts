@@ -64,6 +64,20 @@ export interface BanEntry {
   raw: string;
 }
 
+export interface BackupInfo {
+  id: string;
+  trigger: string;
+  created: string;
+  size_bytes: number;
+}
+
+export interface HistoryEntry {
+  time: string;
+  action: string;
+  detail: string;
+  ok: boolean;
+}
+
 async function j<T>(r: Response): Promise<T> {
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
@@ -97,4 +111,22 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id, message }),
     }).then(j<{ ok: boolean }>),
+
+  // Server Admin
+  lifecycle: (action: "start" | "stop" | "restart", broadcast = "", delay_seconds = 0) =>
+    fetch(`/api/admin/lifecycle/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ broadcast, delay_seconds }),
+    }).then(j<{ ok: boolean }>),
+  broadcast: (message: string) =>
+    fetch("/api/admin/broadcast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    }).then(j<{ ok: boolean }>),
+  save: () => fetch("/api/admin/save", { method: "POST" }).then(j<{ ok: boolean }>),
+  adminBackups: () => fetch("/api/admin/backups").then(j<{ backups: BackupInfo[]; partials: number }>),
+  deleteBackup: (id: string) => fetch(`/api/admin/backups/${id}`, { method: "DELETE" }).then(j<{ ok: boolean }>),
+  history: () => fetch("/api/admin/history").then(j<{ history: HistoryEntry[] }>),
 };

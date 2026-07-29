@@ -355,6 +355,28 @@ func TestSafetyScratchIsDotPrefixedDuringCycle(t *testing.T) {
 	}
 }
 
+func TestDeleteByID(t *testing.T) {
+	root := t.TempDir()
+	world := filepath.Join(t.TempDir(), "W")
+	makeWorld(t, world, "v1")
+	m, _ := NewManager(root)
+	e, _ := m.Create(context.Background(), world, TriggerManual)
+
+	if err := m.Delete("nonexistent-id"); err == nil {
+		t.Fatal("deleting a missing backup must error")
+	}
+	if err := m.Delete("../escape"); err == nil {
+		t.Fatal("path-escaping id must be refused")
+	}
+	if err := m.Delete(e.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	entries, _, _ := m.List()
+	if len(entries) != 0 {
+		t.Fatalf("backup should be gone, %d remain", len(entries))
+	}
+}
+
 func TestDiskCheck(t *testing.T) {
 	world := filepath.Join(t.TempDir(), "W")
 	makeWorld(t, world, "v1")

@@ -257,3 +257,93 @@ func TestPlayerActionsRequireAuth(t *testing.T) {
 		t.Fatalf("moderation must require auth, got %d", resp.StatusCode)
 	}
 }
+
+// ---- server admin ----
+
+type fakeLifecycle struct{ started, stopped, restarted bool }
+
+func (f *fakeLifecycle) Start(context.Context) error   { f.started = true; return nil }
+func (f *fakeLifecycle) Stop(context.Context) error    { f.stopped = true; return nil }
+func (f *fakeLifecycle) Restart(context.Context) error { f.restarted = true; return nil }
+
+type fakeBroadcaster struct {
+	announced string
+	saved     bool
+}
+
+func (f *fakeBroadcaster) Announce(_ context.Context, m string) error { f.announced = m; return nil }
+func (f *fakeBroadcaster) Save(context.Context) error                 { f.saved = true; return nil }
+
+func newAdminServer(t *testing.T) (*Server, *fakeLifecycle, *fakeBroadcaster) {
+	t.Helper()
+	auth, _ := LoadAuthStore(filepath.Join(t.TempDir(), "auth.json"))
+	auth.SetAdminPassword("admin", "hunter2hunter2")
+	lc := &fakeLifecycle{}
+	bc := &fakeBroadcaster{}
+	s := New(Config{
+		Auth: auth, Sessions: NewSessionStore(0),
+		Status:    fakeStatus{info: &palapi.Info{ServerName: "T"}},
+		Lifecycle: lc, Broadcaster: bc,
+		Static: fstest.MapFS{"index.html": {Data: []byte("x")}},
+	})
+	return s, lc, bc
+}
+
+func TestLifecycleActions(t *testing.T) {
+	s, lc, _ := newAdminServer(t)
+	h := s.Handler()
+	ck := authedCookie(t, h)
+	do(t, h, "POST", "/api/admin/lifecycle/start", `{}`, ck)
+	do(t, h, "POST", "/api/admin/lifecycle/restart", `{}`, ck)
+	do(t, h, "POST", "/api/admin/lifecycle/stop", `{}`, ck)
+	if !lc.started || !lc.restarted || !lc.stopped {
+		t.Fatalf("lifecycle not dispatched: %+v", lc)
+	}
+}
+
+func TestLifecycleWithBroadcast(t *testing.T) {
+	s, lc, bc := newAdminServer(t)
+	h := s.Handler()
+	ck := authedCookie(t, h)
+	do(t, h, "POST", "/api/admin/lifecycle/restart", `{"broadcast":"heads up","delay_seconds":0}`, ck)
+	if bc.announced != "heads up" || !lc.restarted {
+		t.Fatalf("broadcast+restart failed: announced=%q restarted=%v", bc.announced, lc.restarted)
+	}
+}
+
+func TestBroadcastAndSave(t *testing.T) {
+	s, _, bc := newAdminServer(t)
+	h := s.Handler()
+	ck := authedCookie(t, h)
+	do(t, h, "POST", "/api/admin/broadcast", `{"message":"hello all"}`, ck)
+	do(t, h, "POST", "/api/admin/save", ``, ck)
+	if bc.announced != "hello all" || !bc.saved {
+		t.Fatalf("broadcast/save failed: %+v", bc)
+	}
+	// empty broadcast → 400
+	resp := do(t, h, "POST", "/api/admin/broadcast", `{"message":""}`, ck)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("empty broadcast must 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestHistoryRecordsActions(t *testing.T) {
+	s, _, _ := newAdminServer(t)
+	h := s.Handler()
+	ck := authedCookie(t, h)
+	do(t, h, "POST", "/api/admin/broadcast", `{"message":"logged"}`, ck)
+	resp := do(t, h, "GET", "/api/admin/history", "", ck)
+	var body struct{ History []LogEntry }
+	json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.History) == 0 || body.History[0].Action != "broadcast" {
+		t.Fatalf("history not recorded: %+v", body.History)
+	}
+}
+
+func TestAdminRequiresAuth(t *testing.T) {
+	s, _, _ := newAdminServer(t)
+	resp := do(t, s.Handler(), "POST", "/api/admin/lifecycle/stop", `{}`, nil)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("admin must require auth, got %d", resp.StatusCode)
+	}
+}

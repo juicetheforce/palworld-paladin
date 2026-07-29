@@ -511,14 +511,17 @@ func cmdServe(args []string) error {
 	banlistPath := filepath.Join(filepath.Dir(d.worldDir), "banlist.txt")
 
 	srv := webserv.New(webserv.Config{
-		Auth:     auth,
-		Sessions: webserv.NewSessionStore(12 * time.Hour),
-		Status:   d.api,
-		Backups:  d.mgr,
-		Host:     sampler,
-		Players:  d.api,
-		BanList:  func() ([]palapi.BanEntry, error) { return palapi.ReadBanList(banlistPath) },
-		Static:   webserv.Assets(),
+		Auth:        auth,
+		Sessions:    webserv.NewSessionStore(12 * time.Hour),
+		Status:      d.api,
+		Backups:     d.mgr,
+		Host:        sampler,
+		Players:     d.api,
+		BanList:     func() ([]palapi.BanEntry, error) { return palapi.ReadBanList(banlistPath) },
+		Lifecycle:   d.unit,
+		Broadcaster: d.api,
+		BackupMgr:   d.mgr,
+		Static:      webserv.Assets(),
 	})
 	if auth.NeedsSetup() {
 		fmt.Println("First run: open the web UI to create your admin password.")
