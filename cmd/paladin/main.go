@@ -528,11 +528,14 @@ func cmdServe(args []string) error {
 		Lifecycle:   d.unit,
 		Broadcaster: d.api,
 		BackupMgr:   d.mgr,
+		Readiness:   d.api,
+		Hub:         hub,
 		Static:      webserv.Assets(),
 	})
 	if auth.NeedsSetup() {
 		fmt.Println("First run: open the web UI to create your admin password.")
 	}
 	fmt.Printf("Paladin web UI on http://%s  (LAN/localhost only — do not expose publicly)\n", *addr)
+	fmt.Printf("  subsystems: live-events=on log-tail=%q host-metrics=on\n", logPath)
 	return http.ListenAndServe(*addr, srv.Handler())
 }
