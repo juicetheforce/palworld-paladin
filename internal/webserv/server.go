@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/juicetheforce/palworld-paladin/internal/events"
 	"github.com/juicetheforce/palworld-paladin/internal/palapi"
 )
 
@@ -44,7 +45,9 @@ type Server struct {
 	lifecycle   Lifecycle
 	broadcaster Broadcaster
 	backupMgr   BackupManager
+	readiness   Readiness
 	actions     *actionLog
+	hub         *events.Hub
 	static      fs.FS // the embedded built React bundle
 	mux         *http.ServeMux
 }
@@ -61,6 +64,8 @@ type Config struct {
 	Lifecycle   Lifecycle
 	Broadcaster Broadcaster
 	BackupMgr   BackupManager
+	Readiness   Readiness
+	Hub         *events.Hub
 	Static      fs.FS
 }
 
@@ -69,8 +74,8 @@ func New(cfg Config) *Server {
 		auth: cfg.Auth, sessions: cfg.Sessions, status: cfg.Status,
 		backups: cfg.Backups, host: cfg.Host, players: cfg.Players,
 		banList: cfg.BanList, lifecycle: cfg.Lifecycle,
-		broadcaster: cfg.Broadcaster, backupMgr: cfg.BackupMgr,
-		actions: newActionLog(100), static: cfg.Static, mux: http.NewServeMux(),
+		broadcaster: cfg.Broadcaster, backupMgr: cfg.BackupMgr, readiness: cfg.Readiness,
+		actions: newActionLog(100), hub: cfg.Hub, static: cfg.Static, mux: http.NewServeMux(),
 	}
 	s.routes()
 	return s
@@ -97,6 +102,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/admin/backups", s.requireAuth(http.HandlerFunc(s.handleBackupList)))
 	s.mux.Handle("DELETE /api/admin/backups/{id}", s.requireAuth(http.HandlerFunc(s.handleBackupDelete)))
 	s.mux.Handle("GET /api/admin/history", s.requireAuth(http.HandlerFunc(s.handleHistory)))
+	s.mux.Handle("GET /api/events", s.requireAuth(http.HandlerFunc(s.handleEvents)))
 
 	// Static SPA fallback for everything else.
 	if s.static != nil {

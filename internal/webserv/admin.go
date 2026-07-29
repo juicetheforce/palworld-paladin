@@ -3,6 +3,7 @@ package webserv
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -23,6 +24,13 @@ type Lifecycle interface {
 type Broadcaster interface {
 	Announce(ctx context.Context, message string) error
 	Save(ctx context.Context) error
+}
+
+// Readiness reports when the server is actually up (REST responding), so
+// start/restart can honestly confirm "started successfully" rather than
+// just "command issued." *palapi.Client satisfies it via WaitReady.
+type Readiness interface {
+	WaitReady(ctx context.Context, interval time.Duration) error
 }
 
 // BackupManager is the slice of the backup manager the page needs.
@@ -94,10 +102,10 @@ type lifecycleReq struct {
 }
 
 // handleLifecycle performs start/stop/restart (path action), optionally
-// preceded by a broadcast + delay. Runs the delay in the request
-// goroutine — the caller's HTTP request blocks until the action is issued,
-// so the UI shows honest completion. (Long delays are the operator's
-// choice; the client sets a generous timeout.)
+// preceded by a broadcast + delay. It runs the operation in a background
+// goroutine and streams live progress over SSE (the event hub), returning
+// 202 immediately so the UI can watch the operation unfold — including the
+// honest "started successfully" confirmation once REST actually responds.
 func (s *Server) handleLifecycle(w http.ResponseWriter, r *http.Request) {
 	action := r.PathValue("action")
 	var req lifecycleReq
@@ -107,24 +115,45 @@ func (s *Server) handleLifecycle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "lifecycle control not available"})
 		return
 	}
-
-	// Optional warn-then-wait.
-	if req.Broadcast != "" && s.broadcaster != nil {
-		bctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-		s.broadcaster.Announce(bctx, req.Broadcast)
-		cancel()
-		s.logAction("broadcast", req.Broadcast, true)
+	if action != "start" && action != "stop" && action != "restart" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown action"})
+		return
 	}
-	if req.Delay > 0 {
-		select {
-		case <-r.Context().Done():
-			writeJSON(w, 499, map[string]string{"error": "cancelled"})
-			return
-		case <-time.After(time.Duration(req.Delay) * time.Second):
+
+	// Run the operation detached from the request so a long warn-delay or
+	// boot wait doesn't hinge on the HTTP connection staying open. Progress
+	// streams over SSE; the request returns 202 Accepted right away.
+	go s.runLifecycle(action, req)
+
+	writeJSON(w, http.StatusAccepted, map[string]bool{"accepted": true})
+}
+
+// runLifecycle executes a lifecycle operation, publishing progress to the
+// event hub at each step. Uses a background context (not the request's) so
+// it completes even after the HTTP response is sent.
+func (s *Server) runLifecycle(action string, req lifecycleReq) {
+	pub := func(step, msg string) {
+		if s.hub != nil {
+			s.hub.Progress(action, step, msg)
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	// Optional warn-then-wait.
+	if req.Broadcast != "" && s.broadcaster != nil {
+		bctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		s.broadcaster.Announce(bctx, req.Broadcast)
+		cancel()
+		s.logAction("broadcast", req.Broadcast, true)
+		pub("announce", "Warned players: "+req.Broadcast)
+	}
+	if req.Delay > 0 {
+		pub("delay", fmt.Sprintf("Waiting %ds before %s…", req.Delay, action))
+		time.Sleep(time.Duration(req.Delay) * time.Second)
+	}
+
+	pub(action, actionGerund(action)+"…")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	var err error
 	switch action {
@@ -134,16 +163,60 @@ func (s *Server) handleLifecycle(w http.ResponseWriter, r *http.Request) {
 		err = s.lifecycle.Stop(ctx)
 	case "restart":
 		err = s.lifecycle.Restart(ctx)
-	default:
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown action"})
-		return
 	}
-	s.logAction("server "+action, req.Broadcast, err == nil)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		s.logAction("server "+action, req.Broadcast, false)
+		if s.hub != nil {
+			s.hub.Error(action, "Failed to "+action+": "+err.Error())
+		}
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+
+	// For start/restart, close the loop honestly: wait for REST to respond
+	// before declaring success. Stop needs no readiness wait.
+	if (action == "start" || action == "restart") && s.readiness != nil {
+		pub(action, "Waiting for server to respond…")
+		rctx, rcancel := context.WithTimeout(context.Background(), 90*time.Second)
+		rerr := s.readiness.WaitReady(rctx, 2*time.Second)
+		rcancel()
+		if rerr != nil {
+			s.logAction("server "+action, "did not confirm ready", false)
+			if s.hub != nil {
+				s.hub.Error(action, "Server "+action+" issued but it did not come up in time: "+rerr.Error())
+			}
+			return
+		}
+	}
+
+	msg := successMessage(action)
+	s.logAction("server "+action, msg, true)
+	if s.hub != nil {
+		s.hub.Done(action, msg, true)
+	}
+}
+
+func actionGerund(a string) string {
+	switch a {
+	case "start":
+		return "Starting server"
+	case "stop":
+		return "Stopping server"
+	case "restart":
+		return "Restarting server"
+	}
+	return a
+}
+
+func successMessage(a string) string {
+	switch a {
+	case "start":
+		return "Server started successfully"
+	case "restart":
+		return "Restart successful — server is responding"
+	case "stop":
+		return "Server stopped"
+	}
+	return a + " complete"
 }
 
 type broadcastReq struct {

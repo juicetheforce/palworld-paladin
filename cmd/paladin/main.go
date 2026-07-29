@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/juicetheforce/palworld-paladin/internal/backup"
+	"github.com/juicetheforce/palworld-paladin/internal/events"
 	"github.com/juicetheforce/palworld-paladin/internal/hostmetrics"
 	"github.com/juicetheforce/palworld-paladin/internal/maintain"
 	"github.com/juicetheforce/palworld-paladin/internal/palapi"
@@ -506,6 +507,12 @@ func cmdServe(args []string) error {
 	}
 	sampler := hostmetrics.NewSampler(3 * time.Second)
 	go sampler.Run(context.Background())
+
+	// Live-event hub + log tailer (SSE foundation). Pal.log lives under
+	// Pal/Saved/Logs; from the saves root that's two dirs up, then Logs.
+	hub := events.NewHub(512)
+	logPath := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(d.worldDir))), "Logs", "Pal.log")
+	go events.TailLog(context.Background(), hub, logPath)
 
 	// banlist.txt lives in SaveGames/ (parent of the world dirs).
 	banlistPath := filepath.Join(filepath.Dir(d.worldDir), "banlist.txt")

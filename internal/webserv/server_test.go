@@ -9,7 +9,9 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
+	"github.com/juicetheforce/palworld-paladin/internal/events"
 	"github.com/juicetheforce/palworld-paladin/internal/palapi"
 )
 
@@ -283,7 +285,7 @@ func newAdminServer(t *testing.T) (*Server, *fakeLifecycle, *fakeBroadcaster) {
 	s := New(Config{
 		Auth: auth, Sessions: NewSessionStore(0),
 		Status:    fakeStatus{info: &palapi.Info{ServerName: "T"}},
-		Lifecycle: lc, Broadcaster: bc,
+		Lifecycle: lc, Broadcaster: bc, Readiness: fakeReadiness{},
 		Static: fstest.MapFS{"index.html": {Data: []byte("x")}},
 	})
 	return s, lc, bc
@@ -293,12 +295,25 @@ func TestLifecycleActions(t *testing.T) {
 	s, lc, _ := newAdminServer(t)
 	h := s.Handler()
 	ck := authedCookie(t, h)
+	// Lifecycle is now async (202 + streamed progress); the fake records
+	// flags from a goroutine, so poll for them.
 	do(t, h, "POST", "/api/admin/lifecycle/start", `{}`, ck)
 	do(t, h, "POST", "/api/admin/lifecycle/restart", `{}`, ck)
 	do(t, h, "POST", "/api/admin/lifecycle/stop", `{}`, ck)
-	if !lc.started || !lc.restarted || !lc.stopped {
-		t.Fatalf("lifecycle not dispatched: %+v", lc)
+	waitFor(t, 2*time.Second, func() bool { return lc.started && lc.restarted && lc.stopped })
+}
+
+// waitFor polls cond until true or the timeout elapses.
+func waitFor(t *testing.T, d time.Duration, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
+	t.Fatal("condition not met within timeout")
 }
 
 func TestLifecycleWithBroadcast(t *testing.T) {
@@ -306,9 +321,7 @@ func TestLifecycleWithBroadcast(t *testing.T) {
 	h := s.Handler()
 	ck := authedCookie(t, h)
 	do(t, h, "POST", "/api/admin/lifecycle/restart", `{"broadcast":"heads up","delay_seconds":0}`, ck)
-	if bc.announced != "heads up" || !lc.restarted {
-		t.Fatalf("broadcast+restart failed: announced=%q restarted=%v", bc.announced, lc.restarted)
-	}
+	waitFor(t, 2*time.Second, func() bool { return bc.announced == "heads up" && lc.restarted })
 }
 
 func TestBroadcastAndSave(t *testing.T) {
@@ -347,3 +360,72 @@ func TestAdminRequiresAuth(t *testing.T) {
 		t.Fatalf("admin must require auth, got %d", resp.StatusCode)
 	}
 }
+
+// ---- SSE events ----
+
+func TestEventsRequiresAuth(t *testing.T) {
+	auth, _ := LoadAuthStore(filepath.Join(t.TempDir(), "auth.json"))
+	auth.SetAdminPassword("admin", "hunter2hunter2")
+	s := New(Config{
+		Auth: auth, Sessions: NewSessionStore(0),
+		Status: fakeStatus{info: &palapi.Info{}},
+		Hub:    events.NewHub(16),
+		Static: fstest.MapFS{"index.html": {Data: []byte("x")}},
+	})
+	resp := do(t, s.Handler(), "GET", "/api/events", "", nil)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("events stream must require auth, got %d", resp.StatusCode)
+	}
+}
+
+func TestLifecycleStreamsProgress(t *testing.T) {
+	auth, _ := LoadAuthStore(filepath.Join(t.TempDir(), "auth.json"))
+	auth.SetAdminPassword("admin", "hunter2hunter2")
+	hub := events.NewHub(64)
+	lc := &fakeLifecycle{}
+	s := New(Config{
+		Auth: auth, Sessions: NewSessionStore(0),
+		Status:    fakeStatus{info: &palapi.Info{}},
+		Lifecycle: lc, Readiness: fakeReadiness{}, Hub: hub,
+		Static: fstest.MapFS{"index.html": {Data: []byte("x")}},
+	})
+	h := s.Handler()
+	ck := authedCookie(t, h)
+
+	// Subscribe to the hub directly (simulating an SSE client).
+	ch, unsub := hub.Subscribe()
+	defer unsub()
+
+	// Kick a restart; it runs in a goroutine and streams progress.
+	resp := do(t, h, "POST", "/api/admin/lifecycle/restart", `{}`, ck)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("lifecycle should return 202 Accepted, got %d", resp.StatusCode)
+	}
+
+	// Collect events until we see the terminal "done".
+	var sawProgress, sawDone bool
+	timeout := time.After(3 * time.Second)
+	for !sawDone {
+		select {
+		case e := <-ch:
+			if e.Kind == events.KindProgress {
+				sawProgress = true
+			}
+			if e.Kind == events.KindDone && e.OK != nil && *e.OK {
+				sawDone = true
+			}
+		case <-timeout:
+			t.Fatalf("did not see done event; progress=%v", sawProgress)
+		}
+	}
+	if !sawProgress {
+		t.Fatal("expected progress events before done")
+	}
+	if !lc.restarted {
+		t.Fatal("restart should have been invoked")
+	}
+}
+
+type fakeReadiness struct{}
+
+func (fakeReadiness) WaitReady(context.Context, time.Duration) error { return nil }

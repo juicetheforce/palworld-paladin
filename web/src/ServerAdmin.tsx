@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, HistoryEntry } from "./api";
 import { useServerState } from "./useServerState";
+import { useEventStream } from "./useEventStream";
+import { LiveLog } from "./LiveLog";
 
 export function ServerAdmin() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -11,6 +13,7 @@ export function ServerAdmin() {
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
   const { online } = useServerState();
+  const { events, connected, clear } = useEventStream();
 
   const load = useCallback(() => {
     api.history().then((r) => setHistory(r.history ?? [])).catch(() => {});
@@ -102,6 +105,11 @@ export function ServerAdmin() {
           <input className="admin-input" value={broadcastMsg} onChange={(e) => setBroadcastMsg(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && doBroadcast()} placeholder="Message to all players" />
           <button className="admin-btn" style={{ marginTop: 12 }} disabled={busy === "broadcast" || !broadcastMsg.trim()} onClick={doBroadcast}>Send broadcast</button>
+        </div>
+
+        {/* Live activity (SSE) */}
+        <div className="livelog-wrap">
+          <LiveLog events={events} connected={connected} onClear={clear} />
         </div>
 
         {/* History */}
