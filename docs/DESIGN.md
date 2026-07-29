@@ -63,6 +63,24 @@
 > (`AutoSaveSpan` → `autoSaveSpan`). palapi shipped and green against the
 > live server; /metrics shape captured (incl. undocumented basecampnum).
 >
+> **Revision 16 — 2026-07-29.** Two live-server findings + one feature spec.
+> (1) Palworld writes **no `Pal.log` unless launched with `-log`** — verified
+> on a live palworld-admin server (no Logs/ dir, no Pal.log anywhere; launch
+> args lacked `-log`). So the live-log viewer's server-log content depends on
+> Paladin authoring the unit WITH `-log`; against a server Paladin didn't
+> launch, the log half is empty and the **roster-differ** (REST-based
+> connect/disconnect, launch-flag-independent) is the reliable player-event
+> source. Same "capability gated behind a launch flag" pattern as the map's
+> `-enable-gamedata-api`. (2) **Install paths can split across two Steam
+> roots**: the launch script ran from `~/.steam/steam/steamapps/...` while
+> the actual binary, saves, and logs lived under
+> `~/.local/share/Steam/steamapps/...`. Adopt-flow path detection must
+> resolve the REAL data path from the running `PalServer-Linux-Shipping`
+> process, not assume a canonical Steam location, and must ignore auxiliary
+> processes (shell wrapper, Sentry `crashpad_handler`). (3) Memory-threshold
+> auto-restart spec added to §6.1 (user-configurable, empty-fields-means-
+> immediate, save-first; build after Update).
+>
 > **Revision 15 — 2026-07-28.** Web dashboard composition decided (§6.6a):
 > host metrics (CPU incl. model/clock, RAM, temps, network throughput) live
 > on the home dashboard, not just the Metrics page; data is client-buffered
@@ -480,6 +498,32 @@ entirely on reliable stop/start. **[inference]**
 - Must reliably detect actual server readiness (REST responding), not just
   "process exists," so the commit workflow can verify a clean restart.
   **[inference]**
+
+**Memory-threshold auto-restart — user-configurable (spec, rev 16).** The
+Server Admin page exposes a config for the RAM-threshold restart. The
+suspendable RAM supervisor already exists (§6.9 I2); this is the wiring +
+UI to make it operator-controllable. Fields:
+- **Threshold in GB** — restart when the server's memory crosses this. (GB,
+  not %, as it's the intuitive unit for "restart when it hits 12 GB.")
+- **Broadcast message** (optional) — warn players before the restart.
+- **Delay in seconds** (optional) — how long to wait after warning.
+
+**Immediate-vs-graceful is inferred from the fields, not a separate mode:**
+if the broadcast and delay are BOTH empty, the threshold restart fires
+immediately; if a message/delay is set, it announces then waits then
+restarts — reusing the exact announce+delay pattern of the manual
+lifecycle controls (§6.7-adjacent). This keeps one mental model: the
+presence of a warning *is* the graceful mode.
+
+**Always save-before-restart.** A leak-triggered restart forces a world
+save first so no player progress is lost, regardless of the warn/delay
+choice. The supervisor stays suspended during commit/restore/update cycles
+(I2) so a threshold trip can't fire mid-maintenance.
+
+Build timing: **after the Update cycle.** Mostly wiring existing parts (RAM
+supervisor + announce/delay + save) plus a settings UI. **[decided at
+rev 16; behavior model — empty-fields-means-immediate — is the operator's
+call.]**
 
 ### 6.2 Settings module
 
