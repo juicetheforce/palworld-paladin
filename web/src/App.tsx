@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, StatusResponse, SessionState, HostSnapshot } from "./api";
 import { Sparkline } from "./Sparkline";
+import { usePrefs } from "./usePrefs";
+import { CustomizeMenu } from "./CustomizeMenu";
 
 export function App() {
   const [state, setState] = useState<SessionState | "loading">("loading");
@@ -143,6 +145,7 @@ function Dashboard() {
   const [fpsHist, setFpsHist] = useState<number[]>([]);
   const [rxHist, setRxHist] = useState<number[]>([]);
   const [txHist, setTxHist] = useState<number[]>([]);
+  const { isVisible, toggle, reset } = usePrefs();
 
   useEffect(() => {
     let alive = true;
@@ -173,6 +176,13 @@ function Dashboard() {
   if (err) return <div className="offline-banner">Could not load status: {err}</div>;
   if (!st) return <div className="loading">Loading status…</div>;
 
+  // Conditional cards are only "available" when the host provides them.
+  const available = (id: string) => {
+    if (id === "temp") return !!host?.temp_available;
+    if (id === "network") return !!host?.net_available;
+    return true;
+  };
+
   return (
     <>
       <div className="page-head">
@@ -180,7 +190,10 @@ function Dashboard() {
           <div className="page-title">Dashboard</div>
           <div className="page-sub">Live server overview · refreshes every 5s</div>
         </div>
-        <StatusPill online={st.online} />
+        <div className="head-actions">
+          <CustomizeMenu isVisible={isVisible} toggle={toggle} reset={reset} available={available} />
+          <StatusPill online={st.online} />
+        </div>
       </div>
 
       {!st.online && (
@@ -188,6 +201,7 @@ function Dashboard() {
       )}
 
       <div className="grid">
+        {isVisible("fps") && (
         <div className="card hero">
           <FpsDial fps={st.fps} />
           <div className="dial-caption">avg {st.fps_average.toFixed(1)} · frame {st.frame_time_ms.toFixed(1)} ms</div>
@@ -196,11 +210,13 @@ function Dashboard() {
               color={st.fps >= 45 ? "var(--good)" : st.fps >= 25 ? "var(--warn)" : "var(--bad)"} />
           </div>
         </div>
+        )}
 
-        <StatCard className="span4" label="Players online" value={`${st.players}`}
-          unit={`/ ${st.max_players}`} sub={`${st.bases} bases · day ${st.days}`} />
-        <StatCard className="span4" label="Uptime" value={formatUptime(st.uptime_sec)} sub="since last start" />
+        {isVisible("players") && <StatCard className="span4" label="Players online" value={`${st.players}`}
+          unit={`/ ${st.max_players}`} sub={`${st.bases} bases · day ${st.days}`} />}
+        {isVisible("uptime") && <StatCard className="span4" label="Uptime" value={formatUptime(st.uptime_sec)} sub="since last start" />}
 
+        {isVisible("server") && (
         <div className="card span4">
           <div className="card-label">Server</div>
           <div className="server-name">{st.server_name || "—"}</div>
@@ -211,8 +227,9 @@ function Dashboard() {
             <Meta k="Backups" v={`${st.backup_count}`} />
           </div>
         </div>
+        )}
 
-        {host && <HostCards host={host} rxHist={rxHist} txHist={txHist} />}
+        {host && <HostCards host={host} rxHist={rxHist} txHist={txHist} isVisible={isVisible} />}
       </div>
     </>
   );
@@ -220,24 +237,28 @@ function Dashboard() {
 
 // Host-metric cards. Temp card hides itself when the host exposes no
 // sensors (VMs) — by design, not failure (§6.5).
-function HostCards({ host, rxHist, txHist }: { host: HostSnapshot; rxHist: number[]; txHist: number[] }) {
+function HostCards({ host, rxHist, txHist, isVisible }: { host: HostSnapshot; rxHist: number[]; txHist: number[]; isVisible: (id: string) => boolean }) {
   const memPct = host.mem_total ? (host.mem_used / host.mem_total) * 100 : 0;
   return (
     <>
+      {isVisible("cpu") && (
       <div className="card span4">
         <div className="card-label">CPU</div>
         <div><span className="stat-big" style={{ color: cpuColor(host.cpu_usage) }}>{host.cpu_usage.toFixed(0)}</span><span className="stat-unit">%</span></div>
         <div className="stat-sub">busiest core {host.cpu_hottest_core.toFixed(0)}%{host.cpu_steal > 1 ? ` · steal ${host.cpu_steal.toFixed(0)}%` : ""}</div>
         <div className="host-ident">{host.cpu_model} · {host.cpu_cores} core{host.cpu_cores === 1 ? "" : "s"} · {(host.cpu_mhz / 1000).toFixed(2)} GHz</div>
       </div>
+      )}
 
+      {isVisible("memory") && (
       <div className="card span4">
         <div className="card-label">Memory</div>
         <div><span className="stat-big" style={{ color: memPct > 90 ? "var(--bad)" : memPct > 75 ? "var(--warn)" : "var(--text)" }}>{fmtBytes(host.mem_used)}</span><span className="stat-unit">/ {fmtBytes(host.mem_total)}</span></div>
         <div className="stat-sub">{memPct.toFixed(0)}% used{host.swap_used > 0 ? ` · swap ${fmtBytes(host.swap_used)}` : ""}</div>
       </div>
+      )}
 
-      {host.temp_available && (
+      {host.temp_available && isVisible("temp") && (
         <div className="card span4">
           <div className="card-label">CPU Temp</div>
           <div><span className="stat-big" style={{ color: host.cpu_temp > 85 ? "var(--bad)" : host.cpu_temp > 70 ? "var(--warn)" : "var(--good)" }}>{host.cpu_temp.toFixed(0)}</span><span className="stat-unit">°C</span></div>
@@ -245,7 +266,7 @@ function HostCards({ host, rxHist, txHist }: { host: HostSnapshot; rxHist: numbe
         </div>
       )}
 
-      {host.net_available && (
+      {host.net_available && isVisible("network") && (
         <div className="card span8">
           <div className="card-label">Network · {host.net_interface}</div>
           <div className="net-row">
