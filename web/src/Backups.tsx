@@ -62,7 +62,10 @@ export function Backups() {
   };
 
   const doRestore = async (b: BackupInfo) => {
-    if (!confirm(`Restore backup ${b.id}?\n\nThis REPLACES the current world (a pre-restore safety copy is kept). ${useWarn ? `Players get ${delay}s warning.` : "No player warning."}`)) return;
+    const liveNote = online === false
+      ? "The server is stopped — it will be started after the restore."
+      : useWarn ? `Players get ${delay}s warning.` : "No player warning.";
+    if (!confirm(`Restore backup ${b.id}?\n\nThis REPLACES the current world (a pre-restore safety copy is kept). ${liveNote}`)) return;
     setBusy("restore");
     try {
       await api.restoreBackup(b.id, useWarn ? warnMsg : "", useWarn ? delay : 0);
@@ -137,8 +140,8 @@ export function Backups() {
                 <td>{fmtSize(b.size_bytes)}</td>
                 <td className="bk-date">{new Date(b.created).toLocaleString()}</td>
                 <td style={{ textAlign: "right" }}>
-                  <button className="act unban" disabled={busy !== "" || online === false}
-                    title={online === false ? "Server must be running to restore" : ""}
+                  <button className="act unban" disabled={busy !== ""}
+                    title={online === false ? "Server is stopped — it will be started after the restore" : ""}
                     onClick={() => doRestore(b)}>Restore</button>
                 </td>
               </tr>

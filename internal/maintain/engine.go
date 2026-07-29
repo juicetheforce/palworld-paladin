@@ -10,9 +10,24 @@ import (
 // Engine runs maintenance cycles. One engine per managed server;
 // invariant I1 (single-flight) is enforced here with a try-lock.
 type Engine struct {
-	cfg    Config
-	mu     sync.Mutex     // held for the duration of a cycle
-	runAnn []Announcement // per-cycle announcements (set under mu)
+	cfg     Config
+	mu      sync.Mutex // held for the duration of a cycle
+	runOpts RunOpts    // per-cycle options (set under mu)
+}
+
+// RunOpts are per-cycle options for RunCycle.
+type RunOpts struct {
+	// Announcements to broadcast before stopping (empty = none).
+	Announcements []Announcement
+	// TolerateStopped: when the pre-check health probe fails, check the
+	// UNIT state instead of aborting. A genuinely inactive unit means the
+	// cycle proceeds "offline" — ANNOUNCE/SAVE/STOP are skipped (audited
+	// as skips) and the flow continues at BACKUP. This is the disaster-
+	// recovery posture: a server that is down (e.g. corrupt world) is
+	// exactly when a restore is most needed. A unit that is ACTIVE while
+	// REST is unreachable (wedged server) still aborts: touching world
+	// files under a live process is never safe. Requires Config.UnitActive.
+	TolerateStopped bool
 }
 
 // NewEngine validates config and returns an Engine.
@@ -24,6 +39,15 @@ func NewEngine(cfg Config) (*Engine, error) {
 	return &Engine{cfg: cfg}, nil
 }
 
+// skippable runs fn unless skip is set (offline cycles: the live-server
+// steps have nothing to do when the server is confirmed stopped).
+func skippable(skip bool, fn func() error) error {
+	if skip {
+		return nil
+	}
+	return fn()
+}
+
 // ErrBusy: another maintenance cycle is already running (invariant I1).
 var ErrBusy = fmt.Errorf("maintain: a maintenance cycle is already running")
 
@@ -31,7 +55,7 @@ var ErrBusy = fmt.Errorf("maintain: a maintenance cycle is already running")
 // Outcome describing the honest final state; the error is non-nil only
 // for infrastructure problems in the engine itself (e.g. journal I/O).
 func (e *Engine) Run(ctx context.Context, cycleID string, p Payload) (Outcome, error) {
-	return e.RunWithAnnouncements(ctx, cycleID, p, e.cfg.Announcements)
+	return e.RunCycle(ctx, cycleID, p, RunOpts{Announcements: e.cfg.Announcements})
 }
 
 // RunWithAnnouncements is Run with a per-cycle announcement override —
@@ -39,11 +63,17 @@ func (e *Engine) Run(ctx context.Context, cycleID string, p Payload) (Outcome, e
 // delay per operation rather than at engine construction. Single-flight
 // (I1) is preserved: same engine, same lock.
 func (e *Engine) RunWithAnnouncements(ctx context.Context, cycleID string, p Payload, ann []Announcement) (Outcome, error) {
+	return e.RunCycle(ctx, cycleID, p, RunOpts{Announcements: ann})
+}
+
+// RunCycle is Run with full per-cycle options. Single-flight (I1) is
+// preserved: same engine, same lock.
+func (e *Engine) RunCycle(ctx context.Context, cycleID string, p Payload, opts RunOpts) (Outcome, error) {
 	if !e.mu.TryLock() {
 		return Outcome{Status: StatusAborted, Detail: ErrBusy.Error()}, ErrBusy
 	}
 	defer e.mu.Unlock()
-	e.runAnn = ann
+	e.runOpts = opts
 
 	if err := e.cfg.Journal.Begin(cycleID, p.Name()); err != nil {
 		return Outcome{Status: StatusAborted, Detail: "journal begin failed: " + err.Error()},
@@ -94,11 +124,31 @@ func (e *Engine) run(ctx context.Context, id string, p Payload) Outcome {
 	}
 
 	// ---- PRE-CHECK: server healthy, disk pre-flight, payload checks ----
+	// skipLive: the cycle runs "offline" — the server was confirmed
+	// stopped, so ANNOUNCE/SAVE/STOP have nothing to do and are skipped
+	// (audited as skips). Only set via RunOpts.TolerateStopped and a
+	// confirmed-inactive unit; a wedged (active but unreachable) server
+	// still aborts here.
+	skipLive := false
 	if err := e.step(ctx, id, p, StepPreCheck, func(c context.Context) error {
 		hc, cancel := context.WithTimeout(c, e.cfg.PreCheckTimeout)
-		defer cancel()
-		if err := e.cfg.API.WaitReady(hc, time.Second); err != nil {
-			return fmt.Errorf("server not healthy: %w", err)
+		err := e.cfg.API.WaitReady(hc, time.Second)
+		cancel()
+		if err != nil {
+			if !e.runOpts.TolerateStopped {
+				return fmt.Errorf("server not healthy: %w", err)
+			}
+			if e.cfg.UnitActive == nil {
+				return fmt.Errorf("server unreachable and unit-state check not available: %w", err)
+			}
+			active, aerr := e.cfg.UnitActive(c)
+			if aerr != nil {
+				return fmt.Errorf("server unreachable and unit state unknown: %v (probe: %w)", aerr, err)
+			}
+			if active {
+				return fmt.Errorf("server process is RUNNING but REST is unreachable (wedged) — stop or investigate it before this cycle can proceed safely: %w", err)
+			}
+			skipLive = true
 		}
 		if e.cfg.DiskCheck != nil {
 			if err := e.cfg.DiskCheck(); err != nil {
@@ -109,74 +159,85 @@ func (e *Engine) run(ctx context.Context, id string, p Payload) Outcome {
 	}); err != nil {
 		return abort(StepPreCheck, err)
 	}
+	if skipLive {
+		e.emit(id, p, EventStepOK, StepAnnounce, "skipped: server already stopped")
+		e.emit(id, p, EventStepOK, StepSave, "skipped: server already stopped")
+		e.emit(id, p, EventStepOK, StepStop, "skipped: server already stopped")
+	}
 
 	// ---- ANNOUNCE: countdown broadcasts ----
-	if err := e.step(ctx, id, p, StepAnnounce, func(c context.Context) error {
-		for _, a := range e.runAnn {
-			if err := e.cfg.API.Announce(c, a.Message); err != nil {
-				if e.cfg.ProceedIfAnnounceFails {
-					continue // explicit operator override (§6.9 matrix)
+	if err := skippable(skipLive, func() error {
+		return e.step(ctx, id, p, StepAnnounce, func(c context.Context) error {
+			for _, a := range e.runOpts.Announcements {
+				if err := e.cfg.API.Announce(c, a.Message); err != nil {
+					if e.cfg.ProceedIfAnnounceFails {
+						continue // explicit operator override (§6.9 matrix)
+					}
+					return fmt.Errorf("broadcast failed (players deserve warning): %w", err)
 				}
-				return fmt.Errorf("broadcast failed (players deserve warning): %w", err)
-			}
-			if a.Wait > 0 {
-				select {
-				case <-c.Done():
-					return c.Err()
-				case <-time.After(a.Wait):
+				if a.Wait > 0 {
+					select {
+					case <-c.Done():
+						return c.Err()
+					case <-time.After(a.Wait):
+					}
 				}
 			}
-		}
-		return nil
+			return nil
+		})
 	}); err != nil {
 		return abort(StepAnnounce, err)
 	}
 
 	// ---- SAVE: never stop on an unsaved world ----
-	if err := e.step(ctx, id, p, StepSave, func(c context.Context) error {
-		sc, cancel := context.WithTimeout(c, e.cfg.SaveTimeout)
-		defer cancel()
-		return e.cfg.API.Save(sc)
+	if err := skippable(skipLive, func() error {
+		return e.step(ctx, id, p, StepSave, func(c context.Context) error {
+			sc, cancel := context.WithTimeout(c, e.cfg.SaveTimeout)
+			defer cancel()
+			return e.cfg.API.Save(sc)
+		})
 	}); err != nil {
 		return abort(StepSave, err)
 	}
 
 	// ---- STOP: graceful, confirmed; escalation is user-initiated only ----
-	if err := e.step(ctx, id, p, StepStop, func(c context.Context) error {
-		if err := e.cfg.Unit.Stop(c); err != nil {
-			return fmt.Errorf("stop command failed: %w", err)
-		}
-		gc, cancel := context.WithTimeout(c, e.cfg.StopGrace)
-		err := e.cfg.Unit.WaitStopped(gc, time.Second)
-		cancel()
-		if err == nil {
-			return nil
-		}
-		// Grace window missed → the §6.9 two-option dialog. No timeout
-		// default, no auto-kill: nil decider means Cancel.
-		e.emit(id, p, EventAwaitingOp, StepStop,
-			"server did not stop in grace window; awaiting operator decision")
-		decision := DecisionCancel
-		if e.cfg.StopDecider != nil {
-			d, derr := e.cfg.StopDecider(c)
-			if derr != nil {
-				return fmt.Errorf("stop escalation: decision unavailable (%v); cancelling", derr)
+	if err := skippable(skipLive, func() error {
+		return e.step(ctx, id, p, StepStop, func(c context.Context) error {
+			if err := e.cfg.Unit.Stop(c); err != nil {
+				return fmt.Errorf("stop command failed: %w", err)
 			}
-			decision = d
-		}
-		if decision == DecisionCancel {
-			return fmt.Errorf("operator cancelled at stop escalation; server left as-is (may be hung)")
-		}
-		// DecisionForceKill: world was already saved at SAVE.
-		if err := e.cfg.Unit.Kill(c); err != nil {
-			return fmt.Errorf("force kill failed: %w", err)
-		}
-		kc, cancel2 := context.WithTimeout(c, e.cfg.KillGrace)
-		defer cancel2()
-		if err := e.cfg.Unit.WaitStopped(kc, time.Second); err != nil {
-			return fmt.Errorf("process survived SIGKILL: %w", err)
-		}
-		return nil
+			gc, cancel := context.WithTimeout(c, e.cfg.StopGrace)
+			err := e.cfg.Unit.WaitStopped(gc, time.Second)
+			cancel()
+			if err == nil {
+				return nil
+			}
+			// Grace window missed → the §6.9 two-option dialog. No timeout
+			// default, no auto-kill: nil decider means Cancel.
+			e.emit(id, p, EventAwaitingOp, StepStop,
+				"server did not stop in grace window; awaiting operator decision")
+			decision := DecisionCancel
+			if e.cfg.StopDecider != nil {
+				d, derr := e.cfg.StopDecider(c)
+				if derr != nil {
+					return fmt.Errorf("stop escalation: decision unavailable (%v); cancelling", derr)
+				}
+				decision = d
+			}
+			if decision == DecisionCancel {
+				return fmt.Errorf("operator cancelled at stop escalation; server left as-is (may be hung)")
+			}
+			// DecisionForceKill: world was already saved at SAVE.
+			if err := e.cfg.Unit.Kill(c); err != nil {
+				return fmt.Errorf("force kill failed: %w", err)
+			}
+			kc, cancel2 := context.WithTimeout(c, e.cfg.KillGrace)
+			defer cancel2()
+			if err := e.cfg.Unit.WaitStopped(kc, time.Second); err != nil {
+				return fmt.Errorf("process survived SIGKILL: %w", err)
+			}
+			return nil
+		})
 	}); err != nil {
 		// Nothing on disk was touched; server is running or hung, not
 		// half-modified. Aborted is the honest status.

@@ -531,3 +531,93 @@ func TestFileJournalSurvivesTornFinalLine(t *testing.T) {
 		t.Fatalf("recovery should still know the last step: %+v", u)
 	}
 }
+
+// ---- offline (TolerateStopped) cycles --------------------------------------
+
+func TestOfflineCycleSkipsLiveStepsAndSucceeds(t *testing.T) {
+	// The disaster-recovery path: server down (REST unreachable, unit
+	// confirmed inactive) → announce/save/stop are skipped, the cycle
+	// proceeds backup → apply → start → verify and succeeds.
+	r := newRig()
+	r.api.notReady = true                                                        // REST down at pre-check…
+	r.cfg.UnitActive = func(context.Context) (bool, error) { return false, nil } // …and unit stopped
+	// WaitReady is also the START-readiness probe; it must succeed once the
+	// server is started. startFixUnit clears notReady on unit.start,
+	// mirroring reality: starting the unit brings REST up.
+	r.cfg.Unit = &startFixUnit{inner: r.unit, api: r.api}
+	eng, _ := NewEngine(r.cfg)
+
+	out, err := eng.RunCycle(context.Background(), "c-offline", r.payload, RunOpts{
+		Announcements:   []Announcement{{Message: "should never send", Wait: 0}},
+		TolerateStopped: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != StatusSuccess {
+		t.Fatalf("offline cycle must succeed, got %s: %s", out.Status, out.Detail)
+	}
+	joined := strings.Join(r.log, ",")
+	for _, forbidden := range []string{"announce:", "save", "unit.stop"} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("offline cycle must not %q; log: %v", forbidden, r.log)
+		}
+	}
+	for _, required := range []string{"p.backup", "p.apply", "unit.start", "p.verify"} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("offline cycle missing %q; log: %v", required, r.log)
+		}
+	}
+}
+
+// startFixUnit brings the fake API back up when the unit starts, mirroring
+// a real server whose REST comes up after systemctl start.
+type startFixUnit struct {
+	inner Unit
+	api   *fakeAPI
+}
+
+func (u *startFixUnit) Start(ctx context.Context) error {
+	u.api.notReady = false
+	return u.inner.Start(ctx)
+}
+func (u *startFixUnit) Stop(ctx context.Context) error { return u.inner.Stop(ctx) }
+func (u *startFixUnit) Kill(ctx context.Context) error { return u.inner.Kill(ctx) }
+func (u *startFixUnit) WaitStopped(ctx context.Context, d time.Duration) error {
+	return u.inner.WaitStopped(ctx, d)
+}
+
+func TestOfflineCycleAbortsOnWedgedServer(t *testing.T) {
+	// REST unreachable but the unit is ACTIVE: a wedged server. Touching
+	// world files under a live process is never safe → abort untouched.
+	r := newRig()
+	r.api.notReady = true
+	r.cfg.UnitActive = func(context.Context) (bool, error) { return true, nil }
+	eng, _ := NewEngine(r.cfg)
+	out, _ := eng.RunCycle(context.Background(), "c-wedged", r.payload, RunOpts{TolerateStopped: true})
+	if out.Status != StatusAborted {
+		t.Fatalf("wedged server must abort, got %s", out.Status)
+	}
+	if !strings.Contains(out.Detail, "RUNNING but REST is unreachable") {
+		t.Fatalf("abort must explain the wedge: %s", out.Detail)
+	}
+	joined := strings.Join(r.log, ",")
+	for _, forbidden := range []string{"p.backup", "p.apply", "unit.start"} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("wedged abort must touch nothing: %v", r.log)
+		}
+	}
+}
+
+func TestDefaultCycleStillAbortsWhenDown(t *testing.T) {
+	// Without TolerateStopped, an unreachable server aborts exactly as
+	// before — the offline path is strictly opt-in.
+	r := newRig()
+	r.api.notReady = true
+	r.cfg.UnitActive = func(context.Context) (bool, error) { return false, nil }
+	eng, _ := NewEngine(r.cfg)
+	out, _ := eng.Run(context.Background(), "c-default-down", r.payload)
+	if out.Status != StatusAborted || !strings.Contains(out.Detail, "not healthy") {
+		t.Fatalf("default cycle must abort on down server: %s %s", out.Status, out.Detail)
+	}
+}

@@ -561,6 +561,13 @@ func cmdServe(args []string) error {
 		API: d.api, Unit: d.unit, Susp: sup, Journal: d.fj,
 		OnEvent:   bridgeEngineEvents(hub),
 		DiskCheck: backup.DiskCheckFunc(d.worldDir, 2.0),
+		UnitActive: func(ctx context.Context) (bool, error) {
+			pr, err := d.unit.Show(ctx)
+			if err != nil {
+				return false, err
+			}
+			return pr.ActiveState == "active", nil
+		},
 	})
 	if err != nil {
 		return err
@@ -829,7 +836,13 @@ func makeRestoreRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.R
 		}
 
 		cycleID := fmt.Sprintf("restore-%d", time.Now().Unix())
-		out, _ := eng.RunWithAnnouncements(context.Background(), cycleID, p, ann)
+		// TolerateStopped: restoring onto a DOWN server is the disaster-
+		// recovery case (corrupt world preventing startup). The engine
+		// skips announce/save/stop when the unit is confirmed inactive,
+		// and still refuses a wedged (active but unreachable) process.
+		out, _ := eng.RunCycle(context.Background(), cycleID, p, maintain.RunOpts{
+			Announcements: ann, TolerateStopped: true,
+		})
 
 		switch out.Status {
 		case maintain.StatusSuccess:

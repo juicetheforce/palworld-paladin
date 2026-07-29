@@ -132,6 +132,12 @@ type Config struct {
 	// DiskCheck implements the invariant-I4 pre-flight (≥ ~2× world
 	// size free). Nil skips the check (tests / callers that pre-check).
 	DiskCheck func() error
+	// UnitActive reports whether the server unit is currently active
+	// (systemd ActiveState). Only consulted by RunOpts.TolerateStopped
+	// cycles when the REST health probe fails, to distinguish "genuinely
+	// stopped" (offline cycle proceeds) from "wedged" (abort). Optional;
+	// nil means TolerateStopped cycles abort on an unreachable server.
+	UnitActive func(ctx context.Context) (bool, error)
 	// StopDecider is consulted only when the server misses StopGrace.
 	// In the app this blocks on the two-option UI dialog; nil is treated
 	// as DecisionCancel (the safe default — never kill without a human).
