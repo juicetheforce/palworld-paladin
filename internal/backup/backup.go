@@ -18,6 +18,7 @@ type Trigger string
 const (
 	TriggerPreCommit  Trigger = "pre-commit"
 	TriggerPreRestore Trigger = "pre-restore"
+	TriggerPreUpdate  Trigger = "pre-update"
 	TriggerScheduled  Trigger = "scheduled"
 	TriggerManual     Trigger = "manual"
 )

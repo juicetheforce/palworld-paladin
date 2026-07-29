@@ -14,6 +14,9 @@ export function ServerAdmin() {
   const [note, setNote] = useState("");
   const { online } = useServerState();
   const { events, connected, clear } = useEventStream();
+  const [updWarn, setUpdWarn] = useState("Server updating shortly — you will be disconnected briefly.");
+  const [updDelay, setUpdDelay] = useState(60);
+  const [updRunning, setUpdRunning] = useState(false);
 
   const load = useCallback(() => {
     api.history().then((r) => setHistory(r.history ?? [])).catch(() => {});
@@ -25,6 +28,27 @@ export function ServerAdmin() {
   }, [load]);
 
   const flash = (m: string) => { setNote(m); setTimeout(() => setNote(""), 4000); };
+
+  // The update runs in the background; its end is signalled by a terminal
+  // event (done/error, op "update") on the live stream.
+  useEffect(() => {
+    const last = events[events.length - 1];
+    if (last && last.op === "update" && (last.kind === "done" || last.kind === "error")) {
+      setUpdRunning(false);
+    }
+  }, [events]);
+
+  const doUpdate = async () => {
+    if (!confirm(`Check Steam for a server update and install it if one exists?${updWarn ? ` Players will be warned${updDelay > 0 ? ` with ${updDelay}s notice` : ""}.` : " No player warning is configured."}\n\nProgress streams into Live activity below.`)) return;
+    setUpdRunning(true);
+    try {
+      await api.update(updWarn, updWarn ? updDelay : 0);
+      flash("Update started — follow it in Live activity.");
+    } catch (e) {
+      setUpdRunning(false);
+      flash(`Failed to start update: ${(e as Error).message}`);
+    }
+  };
 
   const lifecycle = async (action: "start" | "stop" | "restart") => {
     const destructive = action !== "start";
@@ -107,9 +131,25 @@ export function ServerAdmin() {
           <button className="admin-btn" style={{ marginTop: 12 }} disabled={busy === "broadcast" || !broadcastMsg.trim()} onClick={doBroadcast}>Send broadcast</button>
         </div>
 
-        {/* Live activity (SSE) */}
-        <div className="livelog-wrap">
-          <LiveLog events={events} connected={connected} onClear={clear} />
+        {/* Server update */}
+        <div className="card span6">
+          <div className="card-label">Server update</div>
+          <div className="upd-desc">
+            Checks Steam for a new server build. If one exists: warn players,
+            save the world, stop, back up, update via SteamCMD, restart, and
+            verify. If already up to date, nothing is touched.
+          </div>
+          <input className="admin-input" value={updWarn} onChange={(e) => setUpdWarn(e.target.value)}
+            placeholder="Warning message (empty = no warning)" />
+          <div className="admin-delay" style={{ marginTop: 10 }}>
+            <label>Delay</label>
+            <input type="number" min={0} max={600} value={updDelay} onChange={(e) => setUpdDelay(Math.max(0, +e.target.value))} />
+            <span>seconds</span>
+          </div>
+          <button className="admin-btn" style={{ marginTop: 14 }} disabled={updRunning || online === false} onClick={doUpdate}>
+            {updRunning ? "Update running…" : "Check & update"}
+          </button>
+          {updRunning && <div className="upd-running">Follow progress in Live activity below.</div>}
         </div>
 
         {/* History */}
@@ -127,6 +167,13 @@ export function ServerAdmin() {
             ))}
           </div>
         </div>
+
+        {/* Live activity (SSE) */}
+        <div className="livelog-wrap">
+          <LiveLog events={events} connected={connected} onClear={clear} />
+        </div>
+
+
       </div>
     </>
   );

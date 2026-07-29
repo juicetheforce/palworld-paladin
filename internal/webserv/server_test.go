@@ -429,3 +429,60 @@ func TestLifecycleStreamsProgress(t *testing.T) {
 type fakeReadiness struct{}
 
 func (fakeReadiness) WaitReady(context.Context, time.Duration) error { return nil }
+
+// ---- update ----
+
+func TestUpdateEndpoint(t *testing.T) {
+	auth, _ := LoadAuthStore(filepath.Join(t.TempDir(), "auth.json"))
+	auth.SetAdminPassword("admin", "hunter2hunter2")
+	ran := make(chan struct {
+		b string
+		d int
+	}, 1)
+	release := make(chan struct{})
+	s := New(Config{
+		Auth: auth, Sessions: NewSessionStore(0),
+		Status: fakeStatus{info: &palapi.Info{}},
+		Update: func(_ context.Context, broadcast string, delay int) UpdateResult {
+			ran <- struct {
+				b string
+				d int
+			}{broadcast, delay}
+			<-release // hold "busy" until the test releases
+			return UpdateResult{Status: "success"}
+		},
+		Static: fstest.MapFS{"index.html": {Data: []byte("x")}},
+	})
+	h := s.Handler()
+	ck := authedCookie(t, h)
+
+	// No auth → 401.
+	if resp := do(t, s.Handler(), "POST", "/api/admin/update", `{}`, nil); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("update must require auth, got %d", resp.StatusCode)
+	}
+
+	// Kick it: 202, and the runner receives the broadcast + delay.
+	resp := do(t, h, "POST", "/api/admin/update", `{"broadcast":"updating!","delay_seconds":9}`, ck)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("want 202, got %d", resp.StatusCode)
+	}
+	got := <-ran
+	if got.b != "updating!" || got.d != 9 {
+		t.Fatalf("runner got wrong args: %+v", got)
+	}
+
+	// While running: 409 busy.
+	resp = do(t, h, "POST", "/api/admin/update", `{}`, ck)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("second update while busy must 409, got %d", resp.StatusCode)
+	}
+	close(release)
+
+	// After completion the busy flag clears and history records it.
+	waitFor(t, 2*time.Second, func() bool {
+		resp := do(t, h, "GET", "/api/admin/history", "", ck)
+		var body struct{ History []LogEntry }
+		json.NewDecoder(resp.Body).Decode(&body)
+		return len(body.History) > 0 && body.History[0].Action == "update"
+	})
+}

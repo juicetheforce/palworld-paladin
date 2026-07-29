@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io/fs"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/juicetheforce/palworld-paladin/internal/events"
@@ -46,6 +47,8 @@ type Server struct {
 	broadcaster Broadcaster
 	backupMgr   BackupManager
 	readiness   Readiness
+	update      UpdateRunner
+	updateBusy  atomic.Bool
 	actions     *actionLog
 	hub         *events.Hub
 	static      fs.FS // the embedded built React bundle
@@ -65,6 +68,7 @@ type Config struct {
 	Broadcaster Broadcaster
 	BackupMgr   BackupManager
 	Readiness   Readiness
+	Update      UpdateRunner
 	Hub         *events.Hub
 	Static      fs.FS
 }
@@ -75,6 +79,7 @@ func New(cfg Config) *Server {
 		backups: cfg.Backups, host: cfg.Host, players: cfg.Players,
 		banList: cfg.BanList, lifecycle: cfg.Lifecycle,
 		broadcaster: cfg.Broadcaster, backupMgr: cfg.BackupMgr, readiness: cfg.Readiness,
+		update:  cfg.Update,
 		actions: newActionLog(100), hub: cfg.Hub, static: cfg.Static, mux: http.NewServeMux(),
 	}
 	s.routes()
@@ -103,6 +108,7 @@ func (s *Server) routes() {
 	s.mux.Handle("DELETE /api/admin/backups/{id}", s.requireAuth(http.HandlerFunc(s.handleBackupDelete)))
 	s.mux.Handle("GET /api/admin/history", s.requireAuth(http.HandlerFunc(s.handleHistory)))
 	s.mux.Handle("GET /api/events", s.requireAuth(http.HandlerFunc(s.handleEvents)))
+	s.mux.Handle("POST /api/admin/update", s.requireAuth(http.HandlerFunc(s.handleUpdate)))
 
 	// Static SPA fallback for everything else.
 	if s.static != nil {

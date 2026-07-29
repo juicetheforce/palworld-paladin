@@ -328,3 +328,52 @@ func (s *Server) recordAction(action, detail string, ok bool) {
 		s.hub.Done(action, msg, ok)
 	}
 }
+
+// ---- server update ----
+
+// UpdateResult is what the injected update runner reports back.
+type UpdateResult struct {
+	Status   string // maintain.Status string: success / success_with_warnings / aborted / ...
+	Detail   string
+	UpToDate bool // clean no-op: no update existed, server untouched
+}
+
+// UpdateRunner runs one full update cycle (announce → save → stop → backup
+// → steamcmd → start → verify). Wired in main.go where the engine and
+// steam deps live; progress streams over the event hub independently.
+type UpdateRunner func(ctx context.Context, broadcast string, delaySec int) UpdateResult
+
+type updateReq struct {
+	Broadcast string `json:"broadcast"`
+	Delay     int    `json:"delay_seconds"`
+}
+
+// handleUpdate kicks the update cycle in the background and returns 202.
+// A handler-level busy guard gives a clean 409 on double-click; the
+// engine's single-flight lock (I1) remains the real protection underneath.
+func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
+	if s.update == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "update not available"})
+		return
+	}
+	var req updateReq
+	json.NewDecoder(r.Body).Decode(&req) // body optional
+
+	if !s.updateBusy.CompareAndSwap(false, true) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "an update is already running"})
+		return
+	}
+
+	go func() {
+		defer s.updateBusy.Store(false)
+		res := s.update(context.Background(), req.Broadcast, req.Delay)
+		ok := res.UpToDate || res.Status == "success" || res.Status == "success_with_warnings"
+		detail := res.Detail
+		if res.UpToDate {
+			detail = "already up to date"
+		}
+		s.logAction("update", detail, ok)
+	}()
+
+	writeJSON(w, http.StatusAccepted, map[string]bool{"accepted": true})
+}

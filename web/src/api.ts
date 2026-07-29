@@ -129,4 +129,10 @@ export const api = {
   adminBackups: () => fetch("/api/admin/backups").then(j<{ backups: BackupInfo[]; partials: number }>),
   deleteBackup: (id: string) => fetch(`/api/admin/backups/${id}`, { method: "DELETE" }).then(j<{ ok: boolean }>),
   history: () => fetch("/api/admin/history").then(j<{ history: HistoryEntry[] }>),
+  update: (broadcast = "", delay_seconds = 0) =>
+    fetch("/api/admin/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ broadcast, delay_seconds }),
+    }).then(j<{ accepted: boolean }>),
 };

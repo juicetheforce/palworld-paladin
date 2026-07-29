@@ -10,8 +10,9 @@ import (
 // Engine runs maintenance cycles. One engine per managed server;
 // invariant I1 (single-flight) is enforced here with a try-lock.
 type Engine struct {
-	cfg Config
-	mu  sync.Mutex // held for the duration of a cycle
+	cfg    Config
+	mu     sync.Mutex     // held for the duration of a cycle
+	runAnn []Announcement // per-cycle announcements (set under mu)
 }
 
 // NewEngine validates config and returns an Engine.
@@ -30,10 +31,19 @@ var ErrBusy = fmt.Errorf("maintain: a maintenance cycle is already running")
 // Outcome describing the honest final state; the error is non-nil only
 // for infrastructure problems in the engine itself (e.g. journal I/O).
 func (e *Engine) Run(ctx context.Context, cycleID string, p Payload) (Outcome, error) {
+	return e.RunWithAnnouncements(ctx, cycleID, p, e.cfg.Announcements)
+}
+
+// RunWithAnnouncements is Run with a per-cycle announcement override —
+// needed by the web UI, where the operator chooses the warning message and
+// delay per operation rather than at engine construction. Single-flight
+// (I1) is preserved: same engine, same lock.
+func (e *Engine) RunWithAnnouncements(ctx context.Context, cycleID string, p Payload, ann []Announcement) (Outcome, error) {
 	if !e.mu.TryLock() {
 		return Outcome{Status: StatusAborted, Detail: ErrBusy.Error()}, ErrBusy
 	}
 	defer e.mu.Unlock()
+	e.runAnn = ann
 
 	if err := e.cfg.Journal.Begin(cycleID, p.Name()); err != nil {
 		return Outcome{Status: StatusAborted, Detail: "journal begin failed: " + err.Error()},
@@ -102,7 +112,7 @@ func (e *Engine) run(ctx context.Context, id string, p Payload) Outcome {
 
 	// ---- ANNOUNCE: countdown broadcasts ----
 	if err := e.step(ctx, id, p, StepAnnounce, func(c context.Context) error {
-		for _, a := range e.cfg.Announcements {
+		for _, a := range e.runAnn {
 			if err := e.cfg.API.Announce(c, a.Message); err != nil {
 				if e.cfg.ProceedIfAnnounceFails {
 					continue // explicit operator override (§6.9 matrix)

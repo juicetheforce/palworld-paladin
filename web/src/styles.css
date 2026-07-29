@@ -269,3 +269,7 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .b-done { background: color-mix(in srgb, var(--good) 20%, transparent); color: var(--good); }
 .b-error { background: color-mix(in srgb, var(--bad) 22%, transparent); color: var(--bad); }
 .b-lifecycle { background: var(--surface-2); color: var(--text-dim); }
+
+/* ---- server update card ---- */
+.upd-desc { font-size: 13px; color: var(--text-dim); line-height: 1.55; margin-bottom: 14px; }
+.upd-running { margin-top: 10px; font-size: 12px; color: var(--accent); }

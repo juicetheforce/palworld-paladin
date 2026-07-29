@@ -35,7 +35,9 @@ import (
 	"github.com/juicetheforce/palworld-paladin/internal/maintain"
 	"github.com/juicetheforce/palworld-paladin/internal/palapi"
 	"github.com/juicetheforce/palworld-paladin/internal/settings"
+	"github.com/juicetheforce/palworld-paladin/internal/steam"
 	"github.com/juicetheforce/palworld-paladin/internal/supervise"
+	"github.com/juicetheforce/palworld-paladin/internal/update"
 	"github.com/juicetheforce/palworld-paladin/internal/webserv"
 )
 
@@ -517,6 +519,19 @@ func cmdServe(args []string) error {
 	// banlist.txt lives in SaveGames/ (parent of the world dirs).
 	banlistPath := filepath.Join(filepath.Dir(d.worldDir), "banlist.txt")
 
+	// One engine for all web-triggered maintenance cycles (I1: one lock).
+	// Step events bridge to the hub; the terminal event is published by
+	// each runner with operation-appropriate semantics.
+	serveEngine, err := maintain.NewEngine(maintain.Config{
+		API: d.api, Unit: d.unit, Susp: noopSusp{}, Journal: d.fj,
+		OnEvent:   bridgeEngineEvents(hub),
+		DiskCheck: backup.DiskCheckFunc(d.worldDir, 2.0),
+	})
+	if err != nil {
+		return err
+	}
+	updateRunner := makeUpdateRunner(d, serveEngine, hub)
+
 	srv := webserv.New(webserv.Config{
 		Auth:        auth,
 		Sessions:    webserv.NewSessionStore(12 * time.Hour),
@@ -529,6 +544,7 @@ func cmdServe(args []string) error {
 		Broadcaster: d.api,
 		BackupMgr:   d.mgr,
 		Readiness:   d.api,
+		Update:      updateRunner,
 		Hub:         hub,
 		Static:      webserv.Assets(),
 	})
@@ -538,4 +554,119 @@ func cmdServe(args []string) error {
 	fmt.Printf("Paladin web UI on http://%s  (LAN/localhost only — do not expose publicly)\n", *addr)
 	fmt.Printf("  subsystems: live-events=on log-tail=%q host-metrics=on\n", logPath)
 	return http.ListenAndServe(*addr, srv.Handler())
+}
+
+// bridgeEngineEvents adapts maintain engine step events into hub events
+// for the live viewer. CycleFinished is deliberately NOT bridged — each
+// runner publishes its own terminal event with the right semantics (e.g.
+// "already up to date" is a friendly no-op, not a red failure).
+func bridgeEngineEvents(hub *events.Hub) func(maintain.Event) {
+	return func(e maintain.Event) {
+		step := strings.ToLower(string(e.Step))
+		switch e.Kind {
+		case maintain.EventStepStarted:
+			hub.Progress(e.Payload, step, stepLabel(step)+"…")
+		case maintain.EventStepOK:
+			hub.Progress(e.Payload, step, stepLabel(step)+" ok")
+		case maintain.EventStepFailed:
+			hub.Error(e.Payload, stepLabel(step)+" FAILED: "+e.Detail)
+		case maintain.EventRolledBack:
+			hub.Progress(e.Payload, step, "rolling back: "+e.Detail)
+		case maintain.EventAwaitingOp:
+			hub.Error(e.Payload, stepLabel(step)+": awaiting operator decision")
+		}
+	}
+}
+
+func stepLabel(step string) string {
+	switch step {
+	case "pre-check", "precheck":
+		return "Pre-check"
+	case "announce":
+		return "Announcing"
+	case "save":
+		return "Saving world"
+	case "stop":
+		return "Stopping server"
+	case "backup":
+		return "Backing up world"
+	case "apply":
+		return "Applying"
+	case "start":
+		return "Starting server"
+	case "verify":
+		return "Verifying"
+	}
+	return step
+}
+
+// makeUpdateRunner builds the closure the web layer calls to run one full
+// server-update cycle. Steam deps are resolved per run (steamcmd path can
+// change; a missing steamcmd is a clean pre-check error, not a crash).
+func makeUpdateRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.UpdateRunner {
+	// Install root: worldDir is <install>/Pal/Saved/SaveGames/0/<GUID>,
+	// so the install dir is five levels up. The appmanifest lives at
+	// <install>/steamapps/appmanifest_2394010.acf (force_install_dir
+	// layout, which is how Paladin installs and adopts).
+	installDir := d.worldDir
+	for i := 0; i < 5; i++ {
+		installDir = filepath.Dir(installDir)
+	}
+
+	return func(ctx context.Context, broadcast string, delaySec int) webserv.UpdateResult {
+		steamcmd, err := steam.FindSteamCMD()
+		if err != nil {
+			hub.Error("update", err.Error())
+			return webserv.UpdateResult{Status: "aborted", Detail: err.Error()}
+		}
+
+		p, err := update.New(update.Deps{
+			LocalBuildID:  func() (string, error) { return steam.LocalBuildID(installDir, steam.PalworldAppID) },
+			RemoteBuildID: func(c context.Context) (string, error) { return steam.RemoteBuildID(c, steamcmd, steam.PalworldAppID) },
+			RunUpdate: func(c context.Context, onLine func(string)) error {
+				return steam.RunUpdate(c, steamcmd, installDir, steam.PalworldAppID, onLine)
+			},
+			GameVersion: func(c context.Context) (string, error) {
+				info, err := d.api.Info(c)
+				if err != nil {
+					return "", err
+				}
+				return info.Version, nil
+			},
+			Backup: func(c context.Context) (string, error) {
+				e, err := d.mgr.Create(c, d.worldDir, backup.TriggerPreUpdate)
+				if err != nil {
+					return "", err
+				}
+				return e.Path, nil
+			},
+			OnLine: hub.Log,
+		})
+		if err != nil {
+			return webserv.UpdateResult{Status: "aborted", Detail: err.Error()}
+		}
+
+		var ann []maintain.Announcement
+		if broadcast != "" {
+			wait := time.Duration(delaySec) * time.Second
+			ann = append(ann, maintain.Announcement{Message: broadcast, Wait: wait})
+		}
+
+		hub.Progress("update", "check", "Checking Steam for a server update…")
+		cycleID := fmt.Sprintf("update-%d", time.Now().Unix())
+		out, _ := eng.RunWithAnnouncements(context.Background(), cycleID, p, ann)
+
+		// Terminal event with operation-appropriate semantics.
+		switch {
+		case p.UpToDate:
+			hub.Done("update", "Server is already up to date — nothing to do.", true)
+		case out.Status == maintain.StatusSuccess:
+			hub.Done("update", "Update complete — server is back up and verified.", true)
+		case out.Status == maintain.StatusSuccessWithWarnings:
+			hub.Done("update", "Update applied and server is up, with warnings: "+out.Detail, true)
+		default:
+			hub.Error("update", "Update did not complete: "+out.Detail)
+		}
+		return webserv.UpdateResult{Status: string(out.Status), Detail: out.Detail, UpToDate: p.UpToDate}
+	}
 }
