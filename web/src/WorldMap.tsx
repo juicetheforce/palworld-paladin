@@ -12,15 +12,20 @@ interface MapActor {
   rot: number;
 }
 
-// Paldex coordinate extent rendered edge-to-edge (the in-game map spans
-// roughly ±1000 in both axes; margin included).
-const EXTENT = 1100;
+// Paldex coordinate bounds of the map artwork, calibrated against a live
+// player position (in-game (242,-510) at the starting plateau). The 1.0
+// map is NOT centered on the coordinate origin — the island expansions
+// stretched it far south — hence the asymmetric Y range. Nudge these if
+// markers drift: 1% of the image ≈ 22 paldex units.
+const XMIN = -1100, XMAX = 1100, YMIN = -1520, YMAX = 680;
 
 export function WorldMap() {
   const [actors, setActors] = useState<MapActor[]>([]);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [showPals, setShowPals] = useState(true);
-  const [hasImage, setHasImage] = useState(false);
+  // Artwork source chain: operator-supplied override, then the bundled
+  // asset, then the coordinate grid. Whichever loads first wins.
+  const [imgSrc, setImgSrc] = useState<string | null>("/api/map-image");
   const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
   const drag = useRef<{ x: number; y: number } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -41,8 +46,8 @@ export function WorldMap() {
   }, [load]);
 
   // pct positions: x east→right, y north→up (screen top).
-  const px = (a: MapActor) => ((a.map_x + EXTENT) / (2 * EXTENT)) * 100;
-  const py = (a: MapActor) => ((EXTENT - a.map_y) / (2 * EXTENT)) * 100;
+  const px = (a: MapActor) => ((a.map_x - XMIN) / (XMAX - XMIN)) * 100;
+  const py = (a: MapActor) => ((YMAX - a.map_y) / (YMAX - YMIN)) * 100;
 
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault();
@@ -92,19 +97,20 @@ export function WorldMap() {
           className="map-world"
           style={{ transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})` }}
         >
-          {hasImage && (
-            <img className="map-img" src="/api/map-image" alt="" draggable={false} />
+          {imgSrc && (
+            <img className="map-img" src={imgSrc} alt="" draggable={false}
+              onError={() => setImgSrc(imgSrc === "/api/map-image" ? "/worldmap.jpg" : null)} />
           )}
-          <img src="/api/map-image" style={{ display: "none" }} alt=""
-            onLoad={() => setHasImage(true)} onError={() => setHasImage(false)} />
-          {!hasImage && <MapGrid />}
+          {!imgSrc && <MapGrid />}
 
           {showPals && pals.map((a, i) => (
-            <div key={"p" + i} className="map-dot pal" style={{ left: `${px(a)}%`, top: `${py(a)}%` }}
+            <div key={"p" + i} className="map-dot pal"
+              style={{ left: `${px(a)}%`, top: `${py(a)}%`, transform: `translate(-50%,-50%) scale(${1 / view.scale})` }}
               title={`${a.species} · lvl ${a.level} · ${Math.round(a.hp)}/${Math.round(a.max_hp)} HP · (${Math.round(a.map_x)}, ${Math.round(a.map_y)})`} />
           ))}
           {players.map((a, i) => (
-            <div key={"pl" + i} className="map-dot player" style={{ left: `${px(a)}%`, top: `${py(a)}%` }}
+            <div key={"pl" + i} className="map-dot player"
+              style={{ left: `${px(a)}%`, top: `${py(a)}%`, transform: `translate(-50%,-50%) scale(${1 / view.scale})` }}
               title={`${a.name} · lvl ${a.level} · (${Math.round(a.map_x)}, ${Math.round(a.map_y)})`}>
               <span className="map-name">{a.name}</span>
             </div>
@@ -117,25 +123,29 @@ export function WorldMap() {
         </div>
       </div>
 
-      {!hasImage && (
-        <div className="map-note">
-          Showing coordinate grid — Paladin bundles no game artwork. To underlay the world
-          map, place any Palworld map image at
-          <code> /home/palworld/paladin-config/worldmap.png</code> and reload.
-        </div>
-      )}
+      <div className="map-note">
+        Only actors in loaded areas appear — the server simulates the world
+        around connected players, so wild Pals show up near people, not
+        across the whole island.
+        {!imgSrc && <> No map artwork found: place an image at <code>/home/palworld/paladin-config/worldmap.png</code> to underlay the radar.</>}
+      </div>
     </>
   );
 }
 
 function MapGrid() {
   const lines = [];
-  for (let c = -1000; c <= 1000; c += 250) {
-    const p = ((c + EXTENT) / (2 * EXTENT)) * 100;
-    lines.push(<div key={"v" + c} className="grid-line v" style={{ left: `${p}%` }} />);
-    lines.push(<div key={"h" + c} className="grid-line h" style={{ top: `${p}%` }} />);
-    lines.push(<span key={"lx" + c} className="grid-label" style={{ left: `${p}%`, bottom: 4 }}>{c}</span>);
-    lines.push(<span key={"ly" + c} className="grid-label" style={{ top: `${p}%`, left: 4 }}>{-c}</span>);
+  for (let c = -1500; c <= 1500; c += 250) {
+    const pxl = ((c - XMIN) / (XMAX - XMIN)) * 100;
+    const pyl = ((YMAX - c) / (YMAX - YMIN)) * 100;
+    if (pxl >= 0 && pxl <= 100) {
+      lines.push(<div key={"v" + c} className="grid-line v" style={{ left: `${pxl}%` }} />);
+      lines.push(<span key={"lx" + c} className="grid-label" style={{ left: `${pxl}%`, bottom: 4 }}>{c}</span>);
+    }
+    if (pyl >= 0 && pyl <= 100) {
+      lines.push(<div key={"h" + c} className="grid-line h" style={{ top: `${pyl}%` }} />);
+      lines.push(<span key={"ly" + c} className="grid-label" style={{ top: `${pyl}%`, left: 4 }}>{c}</span>);
+    }
   }
   return <div className="map-grid">{lines}</div>;
 }
