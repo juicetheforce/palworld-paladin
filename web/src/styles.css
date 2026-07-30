@@ -365,3 +365,15 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .commit-controls { display: flex; align-items: center; gap: 10px; }
 .commit-controls .admin-input { flex: 1; margin: 0; }
 @media (max-width: 800px) { .set-layout { grid-template-columns: 1fr; } .set-side { position: static; } }
+
+.ll-badge.b-player { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/* ---- dashboard activity card ---- */
+.act-list { display: flex; flex-direction: column; gap: 5px; }
+.act-row { display: flex; gap: 10px; font-size: 12px; line-height: 1.4; min-width: 0; }
+.act-time { color: var(--text-faint); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.act-msg { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-row.k-player .act-msg { color: var(--accent); }
+.act-row.k-error .act-msg { color: var(--bad); }
+.act-row.k-done .act-msg { color: var(--good); }
+.act-empty { font-size: 12px; color: var(--text-faint); }

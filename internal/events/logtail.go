@@ -3,6 +3,7 @@ package events
 import (
 	"bufio"
 	"context"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -78,4 +79,47 @@ func TailLog(ctx context.Context, hub *Hub, path string) {
 		}
 		f.Close()
 	}
+}
+
+// TailFile returns up to n trailing lines of the file at path — the
+// "history on page load" read (the log file IS the log's persistence; no
+// buffering needed). A missing file returns nil, not an error: servers
+// launched without -log simply have no log yet.
+func TailFile(path string, n int) ([]string, error) {
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	const window = 32 * 1024 // plenty for 20 lines of log
+	off := st.Size() - window
+	if off < 0 {
+		off = 0
+	}
+	buf := make([]byte, st.Size()-off)
+	if _, err := f.ReadAt(buf, off); err != nil && err != io.EOF {
+		return nil, err
+	}
+	lines := strings.Split(strings.TrimRight(string(buf), "\n"), "\n")
+	if off > 0 && len(lines) > 0 {
+		lines = lines[1:] // first line is likely partial (we cut mid-line)
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	out := lines[:0]
+	for _, l := range lines {
+		if strings.TrimSpace(l) != "" {
+			out = append(out, l)
+		}
+	}
+	return out, nil
 }

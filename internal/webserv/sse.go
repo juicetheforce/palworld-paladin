@@ -70,3 +70,23 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+// handleEventsRecent is tail-on-connect: the recent-history payload a page
+// fetches on load so the live viewer starts populated instead of blank.
+// Two halves, two sources of truth: Paladin's own recent events from the
+// hub's ring buffer (they exist nowhere else), and the last lines of
+// Pal.log read straight from disk (the file is its own history). A server
+// launched without -log yields an empty log_tail, never an error.
+func (s *Server) handleEventsRecent(w http.ResponseWriter, r *http.Request) {
+	if s.hub == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "events not available"})
+		return
+	}
+	resp := map[string]any{"events": s.hub.Recent()}
+	if s.logTail != nil {
+		if lines, err := s.logTail(20); err == nil {
+			resp["log_tail"] = lines
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
+}

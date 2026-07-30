@@ -34,6 +34,7 @@ import (
 	"github.com/juicetheforce/palworld-paladin/internal/hostmetrics"
 	"github.com/juicetheforce/palworld-paladin/internal/maintain"
 	"github.com/juicetheforce/palworld-paladin/internal/palapi"
+	"github.com/juicetheforce/palworld-paladin/internal/roster"
 	"github.com/juicetheforce/palworld-paladin/internal/settings"
 	"github.com/juicetheforce/palworld-paladin/internal/steam"
 	"github.com/juicetheforce/palworld-paladin/internal/supervise"
@@ -552,6 +553,23 @@ func cmdServe(args []string) error {
 	}
 	memCfg = memStore.Get
 
+	// Roster differ (rev 16): player join/leave events from REST polling —
+	// the launch-flag-independent player-event source. Baseline poll is
+	// silent; outages never fabricate events.
+	differ := roster.New(d.api.Players,
+		func(p palapi.Player) { hub.Player(p.Name + " joined the server") },
+		func(p palapi.Player) { hub.Player(p.Name + " left the server") },
+	)
+	go func() {
+		t := time.NewTicker(10 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			pctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			differ.Poll(pctx) // errors = server down; differ handles it
+			cancel()
+		}
+	}()
+
 	// One engine for all web-triggered maintenance cycles (I1: one lock).
 	// Step events bridge to the hub; the terminal event is published by
 	// each runner with operation-appropriate semantics. The REAL supervisor
@@ -629,8 +647,9 @@ func cmdServe(args []string) error {
 			}
 			return p.MemoryCurrent, nil
 		},
-		Hub:    hub,
-		Static: webserv.Assets(),
+		LogTail: func(n int) ([]string, error) { return events.TailFile(logPath, n) },
+		Hub:     hub,
+		Static:  webserv.Assets(),
 	})
 	recordAction = srv.RecordAction
 	if auth.NeedsSetup() {

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { api, StatusResponse, SessionState, HostSnapshot } from "./api";
 import { Sparkline } from "./Sparkline";
 import { usePrefs } from "./usePrefs";
+import { useEventStream, LiveEvent } from "./useEventStream";
 import { CustomizeMenu } from "./CustomizeMenu";
 import { Players } from "./Players";
 import { OfflineNotice } from "./OfflineNotice";
@@ -83,7 +84,7 @@ const NAV: { id: Section; label: string; icon: string; ready?: boolean }[] = [
   { id: "dashboard", label: "Dashboard", icon: "▮", ready: true },
   { id: "players", label: "Players", icon: "◆", ready: true },
   { id: "map", label: "World Map", icon: "◉" },
-  { id: "settings", label: "Settings", icon: "⚙", ready: true },
+  { id: "settings", label: "Server Settings", icon: "⚙", ready: true },
   { id: "backups", label: "Backups", icon: "❒", ready: true },
   { id: "console", label: "Server Admin", icon: "❯", ready: true },
   { id: "metrics", label: "Metrics", icon: "◔" },
@@ -246,6 +247,8 @@ function HostCards({ host, rxHist, txHist, isVisible }: { host: HostSnapshot; rx
   const memPct = host.mem_total ? (host.mem_used / host.mem_total) * 100 : 0;
   return (
     <>
+      {isVisible("activity") && <ActivityCard />}
+
       {isVisible("cpu") && (
       <div className="card span4">
         <div className="card-label">CPU</div>
@@ -373,4 +376,32 @@ function formatUptime(sec: number): string {
   if (d > 0) return `${d}d ${h}h`;
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
+}
+
+// ActivityCard: the dashboard's recent-activity feed — player joins/leaves
+// (roster differ), Paladin actions, and log lines, seeded with history on
+// load (tail-on-connect) and streaming live. Read-only compact view; the
+// full viewer with controls lives on Server Admin and Backups.
+function ActivityCard() {
+  const { events } = useEventStream(120);
+  const recent = events.slice(-8);
+  return (
+    <div className="card span6">
+      <div className="card-label">Recent activity</div>
+      {recent.length === 0 && <div className="act-empty">Nothing yet — activity appears as it happens.</div>}
+      <div className="act-list">
+        {recent.map((e, i) => <ActivityRow key={e.seq ?? `s${i}`} e={e} />)}
+      </div>
+    </div>
+  );
+}
+
+function ActivityRow({ e }: { e: LiveEvent }) {
+  const t = e.time ? new Date(e.time).toLocaleTimeString() : "";
+  return (
+    <div className={"act-row k-" + e.kind}>
+      <span className="act-time">{t}</span>
+      <span className="act-msg">{e.msg}</span>
+    </div>
+  );
 }

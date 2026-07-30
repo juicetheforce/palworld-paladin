@@ -23,6 +23,7 @@ export const DASHBOARD_CARDS: CardDef[] = [
   { id: "memory", label: "Memory" },
   { id: "temp", label: "CPU temperature", conditional: true },
   { id: "network", label: "Network", conditional: true },
+  { id: "activity", label: "Recent activity" },
 ];
 
 function loadHidden(): Set<string> {

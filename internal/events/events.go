@@ -24,10 +24,12 @@ const (
 	KindLifecycle Kind = "lifecycle" // start/stop/restart status change
 	KindError     Kind = "error"     // an operation-level error
 	KindDone      Kind = "done"      // an operation finished (ok or not)
+	KindPlayer    Kind = "player"    // a player joined or left (roster differ)
 )
 
 // Event is one streamed item. Kept small and JSON-friendly.
 type Event struct {
+	Seq   uint64    `json:"seq"` // monotonic, for history/live dedup
 	Kind  Kind      `json:"kind"`
 	Time  time.Time `json:"time"`
 	Op    string    `json:"op,omitempty"`    // which operation (e.g. "restart", "update")
@@ -43,7 +45,13 @@ type Hub struct {
 	subs   map[int]chan Event
 	nextID int
 	bufLen int
+	seq    uint64
+	recent []Event // ring of recent non-log events (history for page loads)
 }
+
+// recentCap: how many of Paladin's own events survive for tail-on-connect.
+// Log lines are excluded — Pal.log on disk is already their history.
+const recentCap = 100
 
 // NewHub creates a hub. bufLen is the per-subscriber buffer (events beyond
 // it are dropped for that subscriber rather than blocking the producer).
@@ -77,10 +85,29 @@ func (h *Hub) Subscribe() (<-chan Event, func()) {
 
 // Publish delivers an event to all subscribers. Never blocks: a subscriber
 // whose buffer is full misses this event. Stamps Time if unset.
+// Recent returns the buffered recent events, oldest first.
+func (h *Hub) Recent() []Event {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	out := make([]Event, len(h.recent))
+	copy(out, h.recent)
+	return out
+}
+
 func (h *Hub) Publish(e Event) {
 	if e.Time.IsZero() {
 		e.Time = time.Now()
 	}
+	h.mu.Lock()
+	h.seq++
+	e.Seq = h.seq
+	if e.Kind != KindLog { // log lines: the file is their history
+		h.recent = append(h.recent, e)
+		if len(h.recent) > recentCap {
+			h.recent = h.recent[len(h.recent)-recentCap:]
+		}
+	}
+	h.mu.Unlock()
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, ch := range h.subs {
@@ -123,6 +150,9 @@ func (h *Hub) Done(op, msg string, ok bool) {
 }
 
 // Errorf publishes an operation-level error.
+// Player publishes a roster event (join/leave).
+func (h *Hub) Player(msg string) { h.Publish(Event{Kind: KindPlayer, Op: "roster", Msg: msg}) }
+
 func (h *Hub) Error(op, msg string) {
 	h.Publish(Event{Kind: KindError, Op: op, Msg: msg, OK: boolp(false)})
 }

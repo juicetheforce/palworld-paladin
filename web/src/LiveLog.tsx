@@ -63,5 +63,6 @@ function badge(e: LiveEvent): string {
   if (e.kind === "error") return "✕ error";
   if (e.kind === "progress") return (e.op || "step").toUpperCase();
   if (e.kind === "lifecycle") return "lifecycle";
+  if (e.kind === "player") return "player";
   return "";
 }

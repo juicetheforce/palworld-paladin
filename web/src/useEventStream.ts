@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 // A live event from Paladin's SSE stream (/api/events).
 export interface LiveEvent {
-  kind: "log" | "progress" | "lifecycle" | "error" | "done";
+  kind: "log" | "progress" | "lifecycle" | "error" | "done" | "player";
+  seq?: number;
   time: string;
   op?: string;
   msg: string;
@@ -23,18 +24,39 @@ export function useEventStream(maxEvents = 500) {
   useEffect(() => {
     let closed = false;
 
+    const add = (data: LiveEvent) => {
+      setEvents((prev) => {
+        // Dedup by seq: history seeding and the live stream can overlap
+        // around the moment of connection.
+        if (data.seq && prev.some((p) => p.seq === data.seq)) return prev;
+        const next = prev.length >= maxEvents ? prev.slice(prev.length - maxEvents + 1) : prev.slice();
+        next.push(data);
+        return next;
+      });
+    };
+
     const push = (raw: string) => {
       try {
-        const data = JSON.parse(raw) as LiveEvent;
-        setEvents((prev) => {
-          const next = prev.length >= maxEvents ? prev.slice(prev.length - maxEvents + 1) : prev.slice();
-          next.push(data);
-          return next;
-        });
+        add(JSON.parse(raw) as LiveEvent);
       } catch {
         // ignore malformed frames
       }
     };
+
+    // Tail-on-connect: seed the viewer with recent history — the log
+    // file's last lines (its own persistence) plus Paladin's buffered
+    // recent events — so the page never starts blank.
+    fetch("/api/events/recent")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((r: { events?: LiveEvent[]; log_tail?: string[] } | null) => {
+        if (!r || closed) return;
+        const seeded: LiveEvent[] = (r.log_tail ?? []).map((line) => ({
+          kind: "log" as const, time: "", msg: line,
+        }));
+        setEvents((prev) => (prev.length === 0 ? seeded : prev));
+        (r.events ?? []).forEach(add);
+      })
+      .catch(() => {});
 
     const connect = () => {
       if (closed) return;
@@ -51,7 +73,7 @@ export function useEventStream(maxEvents = 500) {
       es.onmessage = (e: MessageEvent) => push(e.data);
 
       // Named handlers for our typed events.
-      for (const kind of ["log", "progress", "lifecycle", "error", "done"]) {
+      for (const kind of ["log", "progress", "lifecycle", "error", "done", "player"]) {
         es.addEventListener(kind, (e) => push((e as MessageEvent).data));
       }
 
