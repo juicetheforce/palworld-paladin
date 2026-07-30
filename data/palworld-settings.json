@@ -1,5 +1,5 @@
 {
-  "$comment": "Paladin settings key list \u2014 source of truth for the settings form, validation, tooltips, and gotcha surfacing (scope doc \u00a76.2). Community PRs welcome: this file is data, not code.",
+  "$comment": "Paladin settings key list — source of truth for the settings form, validation, tooltips, and gotcha surfacing (scope doc §6.2). Community PRs welcome: this file is data, not code.",
   "schema_version": 1,
   "game_version": "v1.0.1.100619 (server-reported via /v1/api/info; 1.0 launch 2026-07-10, hotfix 1.0.1 2026-07-15)",
   "compiled": "2026-07-27",
@@ -31,7 +31,7 @@
   "global_gotchas": [
     {
       "id": "silent-default-reset",
-      "text": "A malformed OptionSettings line (stray newline, unbalanced quote/bracket, lowercase 'true') does NOT error \u2014 the server boots normally with 100% default settings and silently ignores the whole file. Paladin's post-APPLY structural validation exists for exactly this.",
+      "text": "A malformed OptionSettings line (stray newline, unbalanced quote/bracket, lowercase 'true') does NOT error — the server boots normally with 100% default settings and silently ignores the whole file. Paladin's post-APPLY structural validation exists for exactly this.",
       "confidence": "confirmed"
     },
     {
@@ -41,12 +41,12 @@
     },
     {
       "id": "worldoption-sav-override",
-      "text": "Once a world exists, a WorldOption.sav in the save folder is read IN PREFERENCE to PalWorldSettings.ini for the values it contains \u2014 later ini edits silently do nothing for those keys on that world. Community consensus; which exact keys it covers on a 1.0 dedicated server must be test-box verified. The settings module must detect WorldOption.sav and warn per-affected-key at commit time.",
+      "text": "Once a world exists, a WorldOption.sav in the save folder is read IN PREFERENCE to PalWorldSettings.ini for the values it contains — later ini edits silently do nothing for those keys on that world. Community consensus; which exact keys it covers on a 1.0 dedicated server must be test-box verified. The settings module must detect WorldOption.sav and warn per-affected-key at commit time.",
       "confidence": "community-consensus; verify scope on test box"
     },
     {
       "id": "server-rewrites-ini-on-shutdown",
-      "text": "Community claim that the server rewrites the ini from memory on shutdown: TESTED AND NOT REPRODUCED on v1.0.1.100619 (2026-07-27) \u2014 a marker edit made while running survived a graceful stop with an unchanged file hash. Paladin's APPLY-after-STOP ordering is retained anyway: it is correct under both realities and future patches could change this.",
+      "text": "Community claim that the server rewrites the ini from memory on shutdown: TESTED AND NOT REPRODUCED on v1.0.1.100619 (2026-07-27) — a marker edit made while running survived a graceful stop with an unchanged file hash. Paladin's APPLY-after-STOP ordering is retained anyway: it is correct under both realities and future patches could change this.",
       "confidence": "tested; not reproduced on v1.0.1"
     },
     {
@@ -114,7 +114,8 @@
       "source": "official",
       "gotcha": "One shared credential covers every privileged interface, and REST/RCON transmit it over unencrypted HTTP Basic auth. Make it long and never expose these ports beyond localhost/LAN.",
       "kb_link": null,
-      "verify": []
+      "verify": [],
+      "protected": "Paladin authenticates to the server with this password — changing it here would break Paladin's access. Change manually and update Paladin's environment together."
     },
     {
       "key": "ServerPlayerMaxNum",
@@ -138,7 +139,7 @@
       "tooltip": "Co-op party size cap.",
       "added_in": null,
       "source": "community",
-      "gotcha": "Widely reported as non-functional on dedicated servers \u2014 the co-op limit stays at 4 regardless of this value.",
+      "gotcha": "Widely reported as non-functional on dedicated servers — the co-op limit stays at 4 regardless of this value.",
       "kb_link": null,
       "verify": []
     },
@@ -150,7 +151,7 @@
       "tooltip": "Require platform authentication for connecting players.",
       "added_in": null,
       "source": "ea-carryover",
-      "gotcha": "Disabling removes identity verification \u2014 a large security hole for no real gain.",
+      "gotcha": "Disabling removes identity verification — a large security hole for no real gain.",
       "kb_link": null,
       "verify": []
     },
@@ -162,7 +163,7 @@
       "tooltip": "URL the server pulls a global ban-list feed from.",
       "added_in": null,
       "source": "ea-carryover",
-      "gotcha": "This is Pocketpair's global feed, not the server's own bans \u2014 those live in Pal/Saved/SaveGames/banlist.txt. Don't point this at arbitrary URLs.",
+      "gotcha": "This is Pocketpair's global feed, not the server's own bans — those live in Pal/Saved/SaveGames/banlist.txt. Don't point this at arbitrary URLs.",
       "kb_link": null,
       "verify": []
     },
@@ -198,7 +199,7 @@
       "tooltip": "Superseded platform-restriction key.",
       "added_in": null,
       "source": "deprecated",
-      "gotcha": "Officially \"Not available in this version. Use CrossplayPlatforms instead.\" VERIFIED absent from the 1.0.1 template \u2014 kept so the parser recognizes it in adopted EA-era configs; render read-only/hidden.",
+      "gotcha": "Officially \"Not available in this version. Use CrossplayPlatforms instead.\" VERIFIED absent from the 1.0.1 template — kept so the parser recognizes it in adopted EA-era configs; render read-only/hidden.",
       "kb_link": null,
       "verify": []
     },
@@ -258,7 +259,7 @@
       "tooltip": "Enable the game's own rolling save backups (backup/ dir in save data).",
       "added_in": null,
       "source": "official",
-      "gotcha": "Increases disk load. Cadence: 5 saves @30s, 6 @10min, 12 @1h, 7 @1day. Independent of Paladin's backup system \u2014 budget disk for both.",
+      "gotcha": "Increases disk load. Cadence: 5 saves @30s, 6 @10min, 12 @1h, 7 @1day. Independent of Paladin's backup system — budget disk for both.",
       "kb_link": null,
       "verify": []
     },
@@ -310,7 +311,7 @@
       "tooltip": "(Community server) External public port to advertise.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Advertisement only \u2014 does NOT change the port the server listens on; the listen port is a command-line argument.",
+      "gotcha": "Advertisement only — does NOT change the port the server listens on; the listen port is a command-line argument.",
       "kb_link": null,
       "verify": []
     },
@@ -346,9 +347,10 @@
       "tooltip": "Enable the official REST API.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Paladin requires this ON. Pocketpair explicitly warns the API must not be exposed directly to the internet \u2014 keep it on localhost/LAN.",
+      "gotcha": "Paladin requires this ON. Pocketpair explicitly warns the API must not be exposed directly to the internet — keep it on localhost/LAN.",
       "kb_link": null,
-      "verify": []
+      "verify": [],
+      "protected": "Paladin controls the server through the REST API — disabling it would sever Paladin's connection. Change manually only if you know what you're doing."
     },
     {
       "key": "RESTAPIPort",
@@ -360,7 +362,8 @@
       "source": "official",
       "gotcha": null,
       "kb_link": null,
-      "verify": []
+      "verify": [],
+      "protected": "Paladin connects to the REST API on this port — changing it would sever Paladin's connection. Change manually only if you know what you're doing."
     },
     {
       "key": "BaseCampMaxNum",
@@ -383,7 +386,7 @@
       "max": 10,
       "added_in": null,
       "source": "official",
-      "gotcha": "LEVEL-GATED: raising this raises the cap, but guilds still unlock base slots progressively through in-game progression \u2014 the extra slots will NOT appear immediately after restart. The setting has applied even though nothing visibly changed. Also raises processing load (official note).",
+      "gotcha": "LEVEL-GATED: raising this raises the cap, but guilds still unlock base slots progressively through in-game progression — the extra slots will NOT appear immediately after restart. The setting has applied even though nothing visibly changed. Also raises processing load (official note).",
       "kb_link": null,
       "verify": []
     },
@@ -396,7 +399,7 @@
       "max": 50,
       "added_in": null,
       "source": "official",
-      "gotcha": "Widely and persistently reported as non-functional on dedicated servers \u2014 stuck at 15 regardless of value. Set it, restart, and check in-game; if it didn't move, that's the game, not the config. Also raises processing load (official note).",
+      "gotcha": "Widely and persistently reported as non-functional on dedicated servers — stuck at 15 regardless of value. Set it, restart, and check in-game; if it didn't move, that's the game, not the config. Also raises processing load (official note).",
       "kb_link": null,
       "verify": []
     },
@@ -518,7 +521,7 @@
       "tooltip": "Let players choose their starting location on the map.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Default VERIFIED False against the 1.0.1 template (2026-07-27) \u2014 earlier published sources disagreed.",
+      "gotcha": "Default VERIFIED False against the 1.0.1 template (2026-07-27) — earlier published sources disagreed.",
       "kb_link": null,
       "verify": []
     },
@@ -542,7 +545,7 @@
       "tooltip": "Enable base raid invasions.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Disabling raids is a well-known memory-load mitigation, but 1.0 rebuilt raids into a wave system that scales with your base \u2014 turning them off deletes headline 1.0 content. Prefer scheduled restarts (Paladin's RAM-threshold restart) instead.",
+      "gotcha": "Disabling raids is a well-known memory-load mitigation, but 1.0 rebuilt raids into a wave system that scales with your base — turning them off deletes headline 1.0 content. Prefer scheduled restarts (Paladin's RAM-threshold restart) instead.",
       "kb_link": null,
       "verify": []
     },
@@ -667,7 +670,7 @@
       "tooltip": "Hours of total guild inactivity before auto-reset triggers.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Ignored unless bAutoResetGuildNoOnlinePlayers is True (official note). 72h is not a long holiday \u2014 consider 168+.",
+      "gotcha": "Ignored unless bAutoResetGuildNoOnlinePlayers is True (official note). 72h is not a long holiday — consider 168+.",
       "kb_link": null,
       "verify": []
     },
@@ -691,7 +694,7 @@
       "tooltip": "Hide other guilds' base-area boundary effects.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Naming is inverted vs the official description (\"Show base area boundaries\") \u2014 verify polarity in-game before documenting UI labels.",
+      "gotcha": "Naming is inverted vs the official description (\"Show base area boundaries\") — verify polarity in-game before documenting UI labels.",
       "kb_link": null,
       "verify": [
         "polarity-in-game"
@@ -717,7 +720,7 @@
       "tooltip": "In-game proximity voice chat (dedicated servers only).",
       "added_in": "1.0",
       "source": "official",
-      "gotcha": "Dedicated-server exclusive and off by default. Does NOT work for Microsoft Store / Game Pass PC clients \u2014 those players still need external voice.",
+      "gotcha": "Dedicated-server exclusive and off by default. Does NOT work for Microsoft Store / Game Pass PC clients — those players still need external voice.",
       "kb_link": null,
       "verify": []
     },
@@ -849,7 +852,7 @@
       "tooltip": "Roaming Predator boss Pals in the world.",
       "added_in": null,
       "source": "ea-carryover",
-      "gotcha": "Note: no 'b' prefix \u2014 the key really is EnablePredatorBossPal.",
+      "gotcha": "Note: no 'b' prefix — the key really is EnablePredatorBossPal.",
       "kb_link": null,
       "verify": []
     },
@@ -873,7 +876,7 @@
       "tooltip": "Players can damage each other.",
       "added_in": null,
       "source": "ea-carryover",
-      "gotcha": "Part of the required PvP trio \u2014 see bIsPvP.",
+      "gotcha": "Part of the required PvP trio — see bIsPvP.",
       "kb_link": null,
       "verify": []
     },
@@ -885,7 +888,7 @@
       "tooltip": "Base defense Pals attack players from other guilds.",
       "added_in": null,
       "source": "ea-carryover",
-      "gotcha": "Part of the required PvP trio \u2014 see bIsPvP.",
+      "gotcha": "Part of the required PvP trio — see bIsPvP.",
       "kb_link": null,
       "verify": []
     },
@@ -987,7 +990,7 @@
       ],
       "added_in": null,
       "source": "community",
-      "gotcha": "Reported to have little or no effect on its own \u2014 the individual multipliers are what actually change the game.",
+      "gotcha": "Reported to have little or no effect on its own — the individual multipliers are what actually change the game.",
       "kb_link": null,
       "verify": []
     },
@@ -1055,7 +1058,7 @@
       "tooltip": "Wild Pal spawn density multiplier.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Official note: impacts performance \u2014 every extra spawn is a ticked AI actor.",
+      "gotcha": "Official note: impacts performance — every extra spawn is a ticked AI actor.",
       "kb_link": null,
       "verify": []
     },
@@ -1123,7 +1126,7 @@
       "tooltip": "Player hunger depletion multiplier.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Key is genuinely misspelled (\"Decreace\") in the game. \"Fixing\" the spelling silently disables the setting \u2014 the game ignores unknown keys without warning.",
+      "gotcha": "Key is genuinely misspelled (\"Decreace\") in the game. \"Fixing\" the spelling silently disables the setting — the game ignores unknown keys without warning.",
       "kb_link": null,
       "verify": []
     },
@@ -1135,7 +1138,7 @@
       "tooltip": "Player stamina depletion multiplier.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Key is genuinely misspelled (\"Decreace\") in the game. \"Fixing\" the spelling silently disables the setting \u2014 the game ignores unknown keys without warning.",
+      "gotcha": "Key is genuinely misspelled (\"Decreace\") in the game. \"Fixing\" the spelling silently disables the setting — the game ignores unknown keys without warning.",
       "kb_link": null,
       "verify": []
     },
@@ -1171,7 +1174,7 @@
       "tooltip": "Pal hunger depletion multiplier.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Key is genuinely misspelled (\"Decreace\") in the game. \"Fixing\" the spelling silently disables the setting \u2014 the game ignores unknown keys without warning.",
+      "gotcha": "Key is genuinely misspelled (\"Decreace\") in the game. \"Fixing\" the spelling silently disables the setting — the game ignores unknown keys without warning.",
       "kb_link": null,
       "verify": []
     },
@@ -1183,7 +1186,7 @@
       "tooltip": "Pal stamina depletion multiplier.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Key is genuinely misspelled (\"Decreace\") in the game. \"Fixing\" the spelling silently disables the setting \u2014 the game ignores unknown keys without warning.",
+      "gotcha": "Key is genuinely misspelled (\"Decreace\") in the game. \"Fixing\" the spelling silently disables the setting — the game ignores unknown keys without warning.",
       "kb_link": null,
       "verify": []
     },
@@ -1255,7 +1258,7 @@
       "tooltip": "Structure decay speed multiplier. 0 disables decay.",
       "added_in": null,
       "source": "official",
-      "gotcha": "0 is a deliberate, supported choice for burst-play communities \u2014 bases don't crumble during a week away.",
+      "gotcha": "0 is a deliberate, supported choice for burst-play communities — bases don't crumble during a week away.",
       "kb_link": null,
       "verify": []
     },
@@ -1321,7 +1324,7 @@
       ],
       "added_in": null,
       "source": "official",
-      "gotcha": "Default VERIFIED as Item against the 1.0.1 template (changed from EA's All) \u2014 adopted EA configs may still carry All, which is harsher than most groups expect. Enum meanings \u2014 None: no drops; Item: all items except equipment; ItemAndEquipment: all items; All: all items AND all party Pals.",
+      "gotcha": "Default VERIFIED as Item against the 1.0.1 template (changed from EA's All) — adopted EA configs may still carry All, which is harsher than most groups expect. Enum meanings — None: no drops; Item: all items except equipment; ItemAndEquipment: all items; All: all items AND all party Pals.",
       "kb_link": null,
       "verify": []
     },
@@ -1369,7 +1372,7 @@
       "tooltip": "Hours for a Huge Egg to hatch (other eggs scale from it). 0 = instant.",
       "added_in": null,
       "source": "official",
-      "gotcha": "Default VERIFIED 1.0 hours against the 1.0.1 template (changed from EA's 72). An EA-carryover config still contains 72 and keeps using it \u2014 the classic 'my eggs still take forever' report.",
+      "gotcha": "Default VERIFIED 1.0 hours against the 1.0.1 template (changed from EA's 72). An EA-carryover config still contains 72 and keeps using it — the classic 'my eggs still take forever' report.",
       "kb_link": null,
       "verify": []
     },
@@ -1405,7 +1408,7 @@
       "tooltip": "Days an offline guild master keeps leadership before it auto-transfers to an active member.",
       "added_in": "1.0",
       "source": "community",
-      "gotcha": "Fixes guilds frozen by an absent leader \u2014 one of the best 1.0 additions for community servers.",
+      "gotcha": "Fixes guilds frozen by an absent leader — one of the best 1.0 additions for community servers.",
       "kb_link": null,
       "verify": []
     },

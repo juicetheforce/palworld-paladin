@@ -31,7 +31,7 @@ func TestEmbeddedKeyListLoads(t *testing.T) {
 		t.Fatalf("case-insensitive lookup failed: %+v ok=%v", d, ok)
 	}
 	// Password keys are readback-invisible.
-	ap, _ := kl.Lookup("AdminPassword")
+	ap, _ := kl.Lookup("ServerPassword")
 	if ap.ReadbackVerifiable() {
 		t.Fatal("AdminPassword must be rest_readback:false")
 	}
@@ -161,7 +161,7 @@ func newPayload(t *testing.T) (*CommitPayload, string) {
 		KeyList: kl, INIPath: iniPath, WorldDir: dir,
 		Staged: map[string]any{
 			"ExpRate": 2.0, "bEnableVoiceChat": true, "AutoSaveSpan": 60.0,
-			"AdminPassword": "newpw",
+			"ServerPassword": "newpw",
 		},
 		WorldBackup:  func(context.Context) error { return nil },
 		ReadSettings: func(context.Context) (map[string]any, error) { return nil, nil },
@@ -180,7 +180,7 @@ func TestApplyWritesAndRollbackRestores(t *testing.T) {
 	b, _ := os.ReadFile(iniPath)
 	content := string(b)
 	for _, want := range []string{"ExpRate=2.000000", "bEnableVoiceChat=True",
-		"AutoSaveSpan=60.000000", `AdminPassword="newpw"`} {
+		"AutoSaveSpan=60.000000", `ServerPassword="newpw"`} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("applied ini missing %q:\n%s", want, content)
 		}
@@ -230,10 +230,10 @@ func TestVerifyHonesty(t *testing.T) {
 		t.Fatalf("real mismatch must be a warning:\n%s", warns)
 	}
 	// Not-verifiable password is a NOTE, not a warning.
-	if !strings.Contains(notes, "AdminPassword: applied — not verifiable") {
+	if !strings.Contains(notes, "ServerPassword: applied — not verifiable") {
 		t.Fatalf("rest_readback:false key must be an informational note:\n%s", notes)
 	}
-	if strings.Contains(warns, "AdminPassword") {
+	if strings.Contains(warns, "ServerPassword") {
 		t.Fatalf("not-verifiable password must NOT be a warning:\n%s", warns)
 	}
 	// Gotcha context is a NOTE.
@@ -309,5 +309,19 @@ func TestCommitThroughRealEngine(t *testing.T) {
 	b, _ := os.ReadFile(iniPath)
 	if !strings.Contains(string(b), "ExpRate=2.000000") {
 		t.Fatal("engine-driven commit did not land on disk")
+	}
+}
+
+func TestValidateStagedRejectsProtectedKeys(t *testing.T) {
+	kl, err := LoadKeyList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = kl.ValidateStaged(map[string]any{"AdminPassword": "newpass"})
+	if err == nil || !strings.Contains(err.Error(), "protected") {
+		t.Fatalf("protected key must be rejected with explanation: %v", err)
+	}
+	if err := kl.ValidateStaged(map[string]any{"ExpRate": 2.0}); err != nil {
+		t.Fatalf("normal key must pass: %v", err)
 	}
 }

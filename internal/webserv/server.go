@@ -11,6 +11,7 @@ import (
 
 	"github.com/juicetheforce/palworld-paladin/internal/events"
 	"github.com/juicetheforce/palworld-paladin/internal/palapi"
+	"github.com/juicetheforce/palworld-paladin/internal/settings"
 )
 
 // StatusProvider is the slice of palapi the dashboard needs. *palapi.Client
@@ -36,55 +37,62 @@ type HostProvider interface {
 // Server is Paladin's HTTP server: JSON API under /api, static SPA
 // everything else. LAN/localhost bind by default (§8).
 type Server struct {
-	auth         *AuthStore
-	sessions     *SessionStore
-	status       StatusProvider
-	backups      BackupCounter
-	host         HostProvider
-	players      PlayerProvider
-	banList      BanListReader
-	lifecycle    Lifecycle
-	broadcaster  Broadcaster
-	backupMgr    BackupManager
-	readiness    Readiness
-	update       UpdateRunner
-	updateBusy   atomic.Bool
-	localBuild   LocalBuildFunc
-	remoteBuild  RemoteBuildFunc
-	memRestart   MemRestartStore
-	unitMemory   UnitMemoryFunc
-	createBackup CreateBackupFunc
-	restore      RestoreRunner
-	backupBusy   atomic.Bool
-	check        updateCheck
-	actions      *actionLog
-	hub          *events.Hub
-	static       fs.FS // the embedded built React bundle
-	mux          *http.ServeMux
+	auth           *AuthStore
+	sessions       *SessionStore
+	status         StatusProvider
+	backups        BackupCounter
+	host           HostProvider
+	players        PlayerProvider
+	banList        BanListReader
+	lifecycle      Lifecycle
+	broadcaster    Broadcaster
+	backupMgr      BackupManager
+	readiness      Readiness
+	update         UpdateRunner
+	updateBusy     atomic.Bool
+	localBuild     LocalBuildFunc
+	remoteBuild    RemoteBuildFunc
+	memRestart     MemRestartStore
+	unitMemory     UnitMemoryFunc
+	createBackup   CreateBackupFunc
+	restore        RestoreRunner
+	backupBusy     atomic.Bool
+	keyList        *settings.KeyList
+	settingsValues SettingsValuesFunc
+	commit         CommitRunner
+	commitBusy     atomic.Bool
+	check          updateCheck
+	actions        *actionLog
+	hub            *events.Hub
+	static         fs.FS // the embedded built React bundle
+	mux            *http.ServeMux
 }
 
 // Config wires a Server.
 type Config struct {
-	Auth         *AuthStore
-	Sessions     *SessionStore
-	Status       StatusProvider
-	Backups      BackupCounter
-	Host         HostProvider
-	Players      PlayerProvider
-	BanList      BanListReader
-	Lifecycle    Lifecycle
-	Broadcaster  Broadcaster
-	BackupMgr    BackupManager
-	Readiness    Readiness
-	Update       UpdateRunner
-	LocalBuild   LocalBuildFunc
-	RemoteBuild  RemoteBuildFunc
-	MemRestart   MemRestartStore
-	UnitMemory   UnitMemoryFunc
-	CreateBackup CreateBackupFunc
-	Restore      RestoreRunner
-	Hub          *events.Hub
-	Static       fs.FS
+	Auth           *AuthStore
+	Sessions       *SessionStore
+	Status         StatusProvider
+	Backups        BackupCounter
+	Host           HostProvider
+	Players        PlayerProvider
+	BanList        BanListReader
+	Lifecycle      Lifecycle
+	Broadcaster    Broadcaster
+	BackupMgr      BackupManager
+	Readiness      Readiness
+	Update         UpdateRunner
+	LocalBuild     LocalBuildFunc
+	RemoteBuild    RemoteBuildFunc
+	MemRestart     MemRestartStore
+	UnitMemory     UnitMemoryFunc
+	CreateBackup   CreateBackupFunc
+	Restore        RestoreRunner
+	KeyList        *settings.KeyList
+	SettingsValues SettingsValuesFunc
+	Commit         CommitRunner
+	Hub            *events.Hub
+	Static         fs.FS
 }
 
 func New(cfg Config) *Server {
@@ -97,6 +105,7 @@ func New(cfg Config) *Server {
 		localBuild: cfg.LocalBuild, remoteBuild: cfg.RemoteBuild,
 		memRestart: cfg.MemRestart, unitMemory: cfg.UnitMemory,
 		createBackup: cfg.CreateBackup, restore: cfg.Restore,
+		keyList: cfg.KeyList, settingsValues: cfg.SettingsValues, commit: cfg.Commit,
 		actions: newActionLog(100), hub: cfg.Hub, static: cfg.Static, mux: http.NewServeMux(),
 	}
 	s.routes()
@@ -133,6 +142,8 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/admin/backups", s.requireAuth(http.HandlerFunc(s.handleBackupCreate)))
 	s.mux.Handle("POST /api/admin/backups/delete-batch", s.requireAuth(http.HandlerFunc(s.handleBackupDeleteBatch)))
 	s.mux.Handle("POST /api/admin/backups/restore", s.requireAuth(http.HandlerFunc(s.handleBackupRestore)))
+	s.mux.Handle("GET /api/admin/settings", s.requireAuth(http.HandlerFunc(s.handleSettingsGet)))
+	s.mux.Handle("POST /api/admin/settings/commit", s.requireAuth(http.HandlerFunc(s.handleSettingsCommit)))
 
 	// Static SPA fallback for everything else.
 	if s.static != nil {

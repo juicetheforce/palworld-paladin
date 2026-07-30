@@ -607,6 +607,21 @@ func cmdServe(args []string) error {
 			return d.mgr.Create(ctx, d.worldDir, backup.TriggerManual)
 		},
 		Restore: makeRestoreRunner(d, serveEngine, hub),
+		KeyList: d.keyList,
+		SettingsValues: func() (map[string]string, error) {
+			ini, err := settings.LoadINIFile(d.iniPath)
+			if err != nil {
+				return nil, err
+			}
+			vals := make(map[string]string)
+			for _, k := range ini.Keys() {
+				if v, ok := ini.Get(k); ok {
+					vals[k] = v
+				}
+			}
+			return vals, nil
+		},
+		Commit: makeCommitRunner(d, serveEngine, hub),
 		UnitMemory: func(ctx context.Context) (uint64, error) {
 			p, err := d.unit.Show(ctx)
 			if err != nil {
@@ -853,5 +868,38 @@ func makeRestoreRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.R
 			hub.Error("restore", "Restore did not complete: "+out.Detail)
 		}
 		return webserv.RestoreResult{Status: string(out.Status), Detail: out.Detail}
+	}
+}
+
+// makeCommitRunner builds the closure for web-triggered settings commits —
+// the transactional commit-and-restart cycle (§6.3), same engine and event
+// bridge as update and restore.
+func makeCommitRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.CommitRunner {
+	return func(ctx context.Context, staged map[string]any, broadcast string, delaySec int) webserv.CommitResult {
+		p := &settings.CommitPayload{
+			KeyList: d.keyList, INIPath: d.iniPath, WorldDir: d.worldDir,
+			Staged:       staged,
+			WorldBackup:  backup.WorldBackupFunc(d.mgr, d.worldDir),
+			ReadSettings: d.api.Settings,
+			BackupAnchor: defBackups,
+		}
+
+		var ann []maintain.Announcement
+		if broadcast != "" {
+			ann = append(ann, maintain.Announcement{Message: broadcast, Wait: time.Duration(delaySec) * time.Second})
+		}
+
+		cycleID := fmt.Sprintf("commit-%d", time.Now().Unix())
+		out, _ := eng.RunCycle(context.Background(), cycleID, p, maintain.RunOpts{Announcements: ann})
+
+		switch out.Status {
+		case maintain.StatusSuccess:
+			hub.Done("commit", fmt.Sprintf("Settings applied — %d change(s) live and verified.", len(staged)), true)
+		case maintain.StatusSuccessWithWarnings:
+			hub.Done("commit", "Settings applied and server is up, with notes: "+out.Detail, true)
+		default:
+			hub.Error("commit", "Commit did not complete: "+out.Detail)
+		}
+		return webserv.CommitResult{Status: string(out.Status), Detail: out.Detail}
 	}
 }

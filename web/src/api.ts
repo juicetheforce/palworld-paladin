@@ -93,6 +93,19 @@ export interface MemRestartResponse {
   current_memory_bytes?: number;
 }
 
+export interface SettingsKey {
+  key: string;
+  category: string;
+  type: "bool" | "float" | "int" | "string" | "enum" | "list";
+  default: unknown;
+  min?: number | null;
+  max?: number | null;
+  enum?: string[];
+  tooltip: string;
+  gotcha?: string | null;
+  protected?: string | null;
+}
+
 export interface HistoryEntry {
   time: string;
   action: string;
@@ -164,6 +177,13 @@ export const api = {
       body: JSON.stringify({ id, broadcast, delay_seconds }),
     }).then(j<{ accepted: boolean }>),
   history: () => fetch("/api/admin/history").then(j<{ history: HistoryEntry[] }>),
+  settings: () => fetch("/api/admin/settings").then(j<{ keys: SettingsKey[]; values: Record<string, string> }>),
+  commitSettings: (changes: Record<string, string>, broadcast = "", delay_seconds = 0) =>
+    fetch("/api/admin/settings/commit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ changes, broadcast, delay_seconds }),
+    }).then(j<{ accepted: boolean; staged: number }>),
   memRestart: () => fetch("/api/admin/mem-restart").then(j<MemRestartResponse>),
   setMemRestart: (config: MemRestartConfig) =>
     fetch("/api/admin/mem-restart", {

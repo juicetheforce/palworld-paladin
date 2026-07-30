@@ -15,6 +15,7 @@ import (
 	"github.com/juicetheforce/palworld-paladin/internal/backup"
 	"github.com/juicetheforce/palworld-paladin/internal/events"
 	"github.com/juicetheforce/palworld-paladin/internal/palapi"
+	"github.com/juicetheforce/palworld-paladin/internal/settings"
 	"github.com/juicetheforce/palworld-paladin/internal/supervise"
 )
 
@@ -711,4 +712,73 @@ func TestBackupCreateAndRestoreBusyExclusion(t *testing.T) {
 		}
 		return false
 	})
+}
+
+// ---- settings page endpoints ----
+
+func TestSettingsGetAndCommit(t *testing.T) {
+	auth, _ := LoadAuthStore(filepath.Join(t.TempDir(), "auth.json"))
+	auth.SetAdminPassword("admin", "hunter2hunter2")
+	kl, err := settings.LoadKeyList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotStaged map[string]any
+	s := New(Config{
+		Auth: auth, Sessions: NewSessionStore(0),
+		Status:  fakeStatus{info: &palapi.Info{}},
+		KeyList: kl,
+		SettingsValues: func() (map[string]string, error) {
+			return map[string]string{"ExpRate": "1.000000"}, nil
+		},
+		Commit: func(_ context.Context, staged map[string]any, _ string, _ int) CommitResult {
+			gotStaged = staged
+			return CommitResult{Status: "success", Detail: "1 change"}
+		},
+		Static: fstest.MapFS{"index.html": {Data: []byte("x")}},
+	})
+	h := s.Handler()
+	ck := authedCookie(t, h)
+
+	// GET: keys + values, protected reason included in metadata.
+	resp := do(t, h, "GET", "/api/admin/settings", "", ck)
+	var body struct {
+		Keys   []settings.KeyDef `json:"keys"`
+		Values map[string]string `json:"values"`
+	}
+	json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Keys) != 120 || body.Values["ExpRate"] != "1.000000" {
+		t.Fatalf("bad GET: %d keys, values=%v", len(body.Keys), body.Values)
+	}
+	protectedFound := false
+	for _, k := range body.Keys {
+		if k.Key == "AdminPassword" && k.Protected != nil {
+			protectedFound = true
+		}
+	}
+	if !protectedFound {
+		t.Fatal("AdminPassword must carry its protected reason")
+	}
+
+	// Commit of a protected key → 400 with the explanation (defense in depth).
+	resp = do(t, h, "POST", "/api/admin/settings/commit", `{"changes":{"AdminPassword":"x"}}`, ck)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("protected commit must 400, got %d", resp.StatusCode)
+	}
+
+	// A bad value → 400 (type validation).
+	resp = do(t, h, "POST", "/api/admin/settings/commit", `{"changes":{"ExpRate":"not-a-number"}}`, ck)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad value must 400, got %d", resp.StatusCode)
+	}
+
+	// A valid change → 202, typed value reaches the runner.
+	resp = do(t, h, "POST", "/api/admin/settings/commit", `{"changes":{"ExpRate":"2.5"},"broadcast":"changing","delay_seconds":5}`, ck)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("valid commit must 202, got %d", resp.StatusCode)
+	}
+	waitFor(t, 2*time.Second, func() bool { return gotStaged != nil })
+	if v, ok := gotStaged["ExpRate"].(float64); !ok || v != 2.5 {
+		t.Fatalf("runner must receive typed value: %#v", gotStaged)
+	}
 }

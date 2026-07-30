@@ -310,3 +310,58 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .trigger-badge.t-manual { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .trigger-badge.t-pre-update { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .trigger-badge.t-pre-commit, .trigger-badge.t-pre-restore { color: var(--good); background: color-mix(in srgb, var(--good) 12%, transparent); }
+
+/* ---- settings page ---- */
+.set-layout { display: grid; grid-template-columns: 200px 1fr; gap: 16px; align-items: start; }
+.set-side { display: flex; flex-direction: column; gap: 4px; position: sticky; top: 16px; }
+.set-search { margin-bottom: 8px; }
+.set-cat {
+  display: flex; justify-content: space-between; align-items: center;
+  background: none; border: none; color: var(--text-dim); font-size: 13px;
+  padding: 8px 12px; border-radius: 8px; cursor: pointer; text-align: left;
+}
+.set-cat:hover { background: var(--surface-2); color: var(--text); }
+.set-cat.on { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.set-count { font-size: 11px; color: var(--text-faint); }
+.set-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  padding: 9px 16px; border-bottom: 1px solid var(--border);
+}
+.set-row:last-child { border-bottom: none; }
+.set-row.staged { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.set-row.locked { opacity: 0.55; }
+.set-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.set-key {
+  font-family: ui-monospace, monospace; font-size: 13px; color: var(--text);
+  text-decoration: underline dotted color-mix(in srgb, var(--text-faint) 60%, transparent);
+  text-underline-offset: 3px; cursor: help; white-space: nowrap;
+}
+.set-gotcha { color: var(--warn); cursor: help; font-size: 13px; }
+.set-lock { cursor: help; font-size: 12px; }
+.set-orig { font-size: 11px; color: var(--text-faint); text-decoration: line-through; white-space: nowrap; }
+.set-ctl { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.set-ctl input, .set-ctl select {
+  background: var(--surface-2); border: 1px solid var(--border-lit); color: var(--text);
+  border-radius: 7px; padding: 6px 10px; font-size: 13px; width: 170px;
+}
+.set-ctl input:disabled, .set-ctl select:disabled { cursor: not-allowed; }
+.set-revert {
+  background: none; border: 1px solid var(--border-lit); color: var(--accent);
+  border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 13px;
+}
+.commit-bar {
+  position: sticky; bottom: 12px; margin-top: 16px; padding: 14px 18px;
+  background: var(--surface); border: 1px solid var(--accent);
+  border-radius: 12px; box-shadow: 0 8px 32px -8px rgba(0,0,0,0.7);
+  display: flex; flex-direction: column; gap: 10px; z-index: 10;
+}
+.commit-info { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--text); }
+.commit-info a { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; font-size: 12px; }
+.commit-review { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.commit-diff { font-size: 12px; font-family: ui-monospace, monospace; color: var(--text-dim); }
+.commit-diff .ck { color: var(--text); }
+.commit-diff .cold { text-decoration: line-through; color: var(--text-faint); }
+.commit-diff .cnew { color: var(--accent); }
+.commit-controls { display: flex; align-items: center; gap: 10px; }
+.commit-controls .admin-input { flex: 1; margin: 0; }
+@media (max-width: 800px) { .set-layout { grid-template-columns: 1fr; } .set-side { position: static; } }

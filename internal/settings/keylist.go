@@ -25,6 +25,7 @@ type KeyDef struct {
 	KBLink       *string  `json:"kb_link"`
 	Verify       []string `json:"verify"`
 	RestReadback *bool    `json:"rest_readback,omitempty"` // false = never echoed by GET /settings
+	Protected    *string  `json:"protected,omitempty"`     // set = Paladin refuses to edit this key; value explains why
 }
 
 // ReadbackVerifiable reports whether GET /settings can confirm this key
@@ -80,6 +81,15 @@ func (kl *KeyList) Lookup(key string) (*KeyDef, bool) {
 // enum membership, and no deprecated keys. This is the PRE-CHECK's
 // payload half (§6.3 step 1).
 func (kl *KeyList) ValidateStaged(diff map[string]any) error {
+	for key := range diff {
+		if d, ok := kl.Lookup(key); ok && d.Protected != nil {
+			return fmt.Errorf("%s is protected: %s", key, *d.Protected)
+		}
+	}
+	return kl.validateStagedValues(diff)
+}
+
+func (kl *KeyList) validateStagedValues(diff map[string]any) error {
 	var errs []string
 	for key, val := range diff {
 		d, ok := kl.Lookup(key)
