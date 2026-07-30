@@ -58,8 +58,12 @@ export function WorldMap() {
   };
   const onDown = (e: React.MouseEvent) => { drag.current = { x: e.clientX - view.tx, y: e.clientY - view.ty }; };
   const onMove = (e: React.MouseEvent) => {
-    if (!drag.current) return;
-    setView((v) => ({ ...v, tx: e.clientX - drag.current!.x, ty: e.clientY - drag.current!.y }));
+    // Read the ref BEFORE the state updater: React may run the updater
+    // after mouse-up has already cleared the ref (the black-screen race).
+    const d = drag.current;
+    if (!d) return;
+    const tx = e.clientX - d.x, ty = e.clientY - d.y;
+    setView((v) => ({ ...v, tx, ty }));
   };
   const onUp = () => { drag.current = null; };
 
