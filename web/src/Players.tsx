@@ -44,6 +44,8 @@ export function Players() {
   (world?.guilds ?? []).forEach((g) =>
     g.players.forEach((m) =>
       guildByNick.set(m.nickname, { guild: g.name, bases: g.base_ids.length, lastOnline: m.last_online })));
+  const palsByNick = new Map<string, number>();
+  (world?.players ?? []).forEach((p) => palsByNick.set(p.nickname, p.pals?.length ?? 0));
   const onlineNicks = new Set(onlinePlayers.map((p) => p.name));
   const knownOffline = (world?.players ?? []).filter((p) => !onlineNicks.has(p.nickname));
 
@@ -71,6 +73,7 @@ export function Players() {
               <th>Level</th>
               <th>Guild</th>
               <th>Bases</th>
+              <th>Pals</th>
               <th>Ping</th>
               <th style={{ textAlign: "right" }}>Actions</th>
             </tr>
@@ -86,6 +89,7 @@ export function Players() {
                 <td>{p.level || "—"}</td>
                 <td>{guildByNick.get(p.name)?.guild || "—"}</td>
                 <td>{guildByNick.get(p.name)?.bases ?? "—"}</td>
+                <td>{palsByNick.has(p.name) ? palsByNick.get(p.name) : "—"}</td>
                 <td>{p.ping ? `${p.ping.toFixed(0)} ms` : "—"}</td>
                 <td style={{ textAlign: "right" }}>
                   <button className="act kick" disabled={busy === p.user_id + "kick"} onClick={() => act("kick", p.user_id, p.name)}>Kick</button>
