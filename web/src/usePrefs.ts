@@ -16,11 +16,9 @@ export interface CardDef {
 
 export const DASHBOARD_CARDS: CardDef[] = [
   { id: "fps", label: "Server FPS" },
-  { id: "players", label: "Players online" },
   { id: "server", label: "Server info" },
   { id: "cpu", label: "CPU" },
   { id: "memory", label: "Memory" },
-  { id: "temp", label: "CPU temperature", conditional: true },
   { id: "network", label: "Network", conditional: true },
   { id: "activity", label: "Recent activity" },
 ];

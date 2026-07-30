@@ -241,9 +241,23 @@ function Dashboard() {
         <div className="card hero span8">
           <FpsDial fps={st.fps} />
           <div className="hero-side">
-            <div className="dial-caption">avg {st.fps_average.toFixed(1)} · frame {st.frame_time_ms.toFixed(1)} ms · up {formatUptime(st.uptime_sec)}</div>
-            <Sparkline data={fpsHist} min={0} max={70} height={64}
+            <div className="hero-stats">
+              <div className="hstat">
+                <div className="hstat-v">{st.players}<span className="hstat-u">/ {st.max_players}</span></div>
+                <div className="hstat-l">Players</div>
+              </div>
+              <div className="hstat">
+                <div className="hstat-v">{formatUptime(st.uptime_sec)}</div>
+                <div className="hstat-l">Uptime</div>
+              </div>
+              <div className="hstat">
+                <div className="hstat-v">{st.bases}</div>
+                <div className="hstat-l">Bases</div>
+              </div>
+            </div>
+            <Sparkline data={fpsHist} min={0} max={70} height={54}
               color={st.fps >= 45 ? "var(--good)" : st.fps >= 25 ? "var(--warn)" : "var(--bad)"} />
+            <div className="dial-caption">avg {st.fps_average.toFixed(1)} · frame {st.frame_time_ms.toFixed(1)} ms</div>
           </div>
         </div>
         )}
@@ -262,15 +276,6 @@ function Dashboard() {
         </div>
         )}
 
-        {st.online && isVisible("players") && <StatCard className="span4" label="Players online" value={`${st.players}`}
-          unit={`/ ${st.max_players}`} sub={`${st.bases} bases · day ${st.days}`} />}
-        {host?.temp_available && isVisible("temp") && (
-        <div className="card span4">
-          <div className="card-label">CPU Temp</div>
-          <div><span className="stat-big" style={{ color: host.cpu_temp > 85 ? "var(--bad)" : host.cpu_temp > 70 ? "var(--warn)" : "var(--good)" }}>{host.cpu_temp.toFixed(0)}</span><span className="stat-unit">°C</span></div>
-          <div className="stat-sub">package temperature</div>
-        </div>
-        )}
 
 
         {host && <HostCards host={host} rxHist={rxHist} txHist={txHist} isVisible={isVisible} gameMemHist={gameMemHist} memThreshold={memThreshold} />}
@@ -301,7 +306,14 @@ function HostCards({ host, rxHist, txHist, gameMemHist, memThreshold, isVisible 
             </span>
           )}
         </div>
-        <div className="host-ident">{host.cpu_model} · {host.cpu_cores} core{host.cpu_cores === 1 ? "" : "s"} · {(host.cpu_mhz / 1000).toFixed(2)} GHz</div>
+        <div className="host-ident">
+          {host.cpu_model} · {host.cpu_cores} core{host.cpu_cores === 1 ? "" : "s"} · {(host.cpu_mhz / 1000).toFixed(2)} GHz
+          {host.temp_available && (
+            <span style={{ color: host.cpu_temp > 85 ? "var(--bad)" : host.cpu_temp > 70 ? "var(--warn)" : "var(--good)" }} title="CPU package temperature">
+              {" "}· {host.cpu_temp.toFixed(0)}°C
+            </span>
+          )}
+        </div>
       </div>
       )}
 
@@ -354,17 +366,6 @@ function StatusPill({ online }: { online: boolean }) {
   );
 }
 
-function StatCard({ className, label, value, unit, sub }: {
-  className?: string; label: string; value: string; unit?: string; sub?: string;
-}) {
-  return (
-    <div className={"card " + (className ?? "")}>
-      <div className="card-label">{label}</div>
-      <div><span className="stat-big">{value}</span>{unit && <span className="stat-unit">{unit}</span>}</div>
-      {sub && <div className="stat-sub">{sub}</div>}
-    </div>
-  );
-}
 
 function Meta({ k, v }: { k: string; v: string }) {
   return <div className="meta-item"><div className="k">{k}</div><div className="v">{v}</div></div>;

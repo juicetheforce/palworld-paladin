@@ -451,3 +451,9 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
   box-shadow: 0 0 10px -1px var(--warn);
 }
 .span12 { grid-column: span 12; }
+
+/* ---- hero stat row ---- */
+.hero-stats { display: flex; gap: 36px; margin-bottom: 2px; }
+.hstat-v { font-size: 26px; font-weight: 720; line-height: 1.1; color: var(--text); }
+.hstat-u { font-size: 13px; color: var(--text-dim); margin-left: 4px; font-weight: 500; }
+.hstat-l { font-size: 10px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-dim); margin-top: 3px; }
