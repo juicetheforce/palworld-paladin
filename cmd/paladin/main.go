@@ -63,6 +63,7 @@ const (
 )
 
 type deps struct {
+	cfg      AppConfig
 	api      *palapi.Client
 	unit     *supervise.UnitController
 	fj       *maintain.FileJournal
@@ -116,28 +117,27 @@ func usage() {
 
 // ---- wiring -----------------------------------------------------------------
 
-func build() (*deps, error) {
-	d := &deps{iniPath: defINI}
-	pw := os.Getenv("PALWORLD_ADMIN_PASSWORD")
-	if pw == "" {
-		if b, err := os.ReadFile(defCredsFile); err == nil {
-			for _, ln := range strings.Split(string(b), "\n") {
-				if v, ok := strings.CutPrefix(strings.TrimSpace(ln), "AdminPassword: "); ok {
-					pw = v
-				}
-			}
-		}
+// resolveConfig: explicit path > PALADIN_CONFIG env > default location.
+func resolveConfig(explicit string) (AppConfig, error) {
+	if explicit == "" {
+		explicit = os.Getenv("PALADIN_CONFIG")
 	}
-	if pw == "" {
-		return nil, fmt.Errorf("no admin password: set PALWORLD_ADMIN_PASSWORD or make %s readable", defCredsFile)
+	return loadAppConfig(explicit)
+}
+
+func build(cfg AppConfig) (*deps, error) {
+	d := &deps{cfg: cfg, iniPath: cfg.iniPath()}
+	pw, err := cfg.adminPassword()
+	if err != nil {
+		return nil, err
 	}
-	d.api = palapi.New(defAPIURL, pw)
-	d.unit = supervise.NewScopedUnitController(defUnit)
+	d.api = palapi.New(cfg.apiURL(), pw)
+	d.unit = supervise.NewScopedUnitController(cfg.serverUnit())
 
 	// Detect the world folder — never assume (§7.4 ethos).
-	des, err := os.ReadDir(defSavesRoot)
+	des, err := os.ReadDir(cfg.savesRoot())
 	if err != nil {
-		return nil, fmt.Errorf("list %s: %w", defSavesRoot, err)
+		return nil, fmt.Errorf("list %s: %w", cfg.savesRoot(), err)
 	}
 	var worlds []string
 	for _, de := range des {
@@ -152,11 +152,11 @@ func build() (*deps, error) {
 	}
 	d.worldDir = filepath.Join(defSavesRoot, worlds[0])
 
-	d.fj, err = maintain.NewFileJournal(defJournal)
+	d.fj, err = maintain.NewFileJournal(cfg.journalDir())
 	if err != nil {
 		return nil, err
 	}
-	d.mgr, err = backup.NewManager(defBackups)
+	d.mgr, err = backup.NewManager(cfg.backupsDir())
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +260,11 @@ func printOutcome(out maintain.Outcome) {
 }
 
 func refuseIfUnclosed() error {
-	u, err := maintain.ReadUnclosed(defJournal)
+	cfg, err := resolveConfig("")
+	if err != nil {
+		return err
+	}
+	u, err := maintain.ReadUnclosed(cfg.journalDir())
 	if err != nil {
 		return err
 	}
@@ -274,7 +278,11 @@ func refuseIfUnclosed() error {
 // ---- commands ---------------------------------------------------------------
 
 func cmdStatus(args []string) error {
-	d, err := build()
+	cfg, err := resolveConfig("")
+	if err != nil {
+		return err
+	}
+	d, err := build(cfg)
 	if err != nil {
 		return err
 	}
@@ -311,7 +319,11 @@ func cmdBackup(args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("backup: need create|list|prune")
 	}
-	d, err := build()
+	cfg, err := resolveConfig("")
+	if err != nil {
+		return err
+	}
+	d, err := build(cfg)
 	if err != nil {
 		return err
 	}
@@ -380,7 +392,11 @@ func cmdCommit(args []string) error {
 	if err := refuseIfUnclosed(); err != nil {
 		return err
 	}
-	d, err := build()
+	cfg, err := resolveConfig("")
+	if err != nil {
+		return err
+	}
+	d, err := build(cfg)
 	if err != nil {
 		return err
 	}
@@ -407,7 +423,7 @@ func cmdCommit(args []string) error {
 		Staged:       staged,
 		WorldBackup:  backup.WorldBackupFunc(d.mgr, d.worldDir),
 		ReadSettings: d.api.Settings,
-		BackupAnchor: defBackups,
+		BackupAnchor: d.cfg.backupsDir(),
 	}
 	eng, err := engineFor(d, *countdown)
 	if err != nil {
@@ -435,7 +451,11 @@ func cmdRestore(args []string) error {
 	if err := refuseIfUnclosed(); err != nil {
 		return err
 	}
-	d, err := build()
+	cfg, err := resolveConfig("")
+	if err != nil {
+		return err
+	}
+	d, err := build(cfg)
 	if err != nil {
 		return err
 	}
@@ -446,7 +466,7 @@ func cmdRestore(args []string) error {
 	}
 	p := &backup.RestorePayload{
 		Mgr: d.mgr, Selected: entry, WorldDir: d.worldDir,
-		SafetyRelocateDir: defSafetyHold, // relocate out of the save tree after success (§2)
+		SafetyRelocateDir: d.cfg.safetyDir(), // relocate out of the save tree after success (§2)
 		ReadWorldGUID: func(ctx context.Context) (string, error) {
 			info, err := d.api.Info(ctx)
 			if err != nil {
@@ -470,7 +490,11 @@ func cmdRestore(args []string) error {
 }
 
 func cmdRecover(args []string) error {
-	u, err := maintain.ReadUnclosed(defJournal)
+	cfg, err := resolveConfig("")
+	if err != nil {
+		return err
+	}
+	u, err := maintain.ReadUnclosed(cfg.journalDir())
 	if err != nil {
 		return err
 	}
@@ -487,7 +511,7 @@ func cmdRecover(args []string) error {
 	fmt.Println()
 	fmt.Println("Nothing is resumed automatically (§6.9 I3). Inspect the anchors on disk")
 	fmt.Println("(pre-write ini copy, backups, any *.paladin-safety-* world folder), restore")
-	fmt.Println("by hand if needed, then delete " + filepath.Join(defJournal, "active.journal") +
+	fmt.Println("by hand if needed, then delete " + filepath.Join(cfg.journalDir(), "active.journal") +
 		" to acknowledge.")
 	return nil
 }
@@ -500,15 +524,23 @@ func cycleID(kind string) string {
 // /api/status over the embedded React bundle (DESIGN.md §6.6).
 func cmdServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
-	addr := fs.String("addr", defWebAddr, "listen address (host:port); default is localhost-only")
+	addr := fs.String("addr", "", "listen address (host:port); overrides config; default is localhost-only")
+	cfgPath := fs.String("config", "", "deployment config file (default $PALADIN_CONFIG or "+defConfigPath+")")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	d, err := build()
+	cfg, err := resolveConfig(*cfgPath)
 	if err != nil {
 		return err
 	}
-	auth, err := webserv.LoadAuthStore(defAuthFile)
+	d, err := build(cfg)
+	if err != nil {
+		return err
+	}
+	if *addr == "" {
+		*addr = cfg.listen()
+	}
+	auth, err := webserv.LoadAuthStore(cfg.authFile())
 	if err != nil {
 		return err
 	}
@@ -548,7 +580,7 @@ func cmdServe(args []string) error {
 	})
 	go sup.Run(context.Background())
 
-	memStore, err := supervise.LoadRestartConfigStore(defMemRestart, func(rc supervise.RestartConfig) {
+	memStore, err := supervise.LoadRestartConfigStore(cfg.memRestartFile(), func(rc supervise.RestartConfig) {
 		sup.SetMemThreshold(rc.ThresholdBytes())
 	})
 	if err != nil {
@@ -560,10 +592,10 @@ func cmdServe(args []string) error {
 	// event history is the only history there is). Seed the hub's ring
 	// from the last run's events, then persist ring-worthy events as they
 	// happen. A failed open degrades to in-memory-only, loudly.
-	if evlog, err := events.OpenEventLog(defEventLog, 1<<20); err != nil {
+	if evlog, err := events.OpenEventLog(cfg.eventLogFile(), 1<<20); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: event log unavailable ("+err.Error()+") — history will not survive restarts")
 	} else {
-		if loaded, err := events.LoadRecent(defEventLog, 100); err == nil && len(loaded) > 0 {
+		if loaded, err := events.LoadRecent(cfg.eventLogFile(), 100); err == nil && len(loaded) > 0 {
 			hub.Seed(loaded)
 		}
 		hub.SetPersist(func(e events.Event) { evlog.Append(e) })
@@ -666,7 +698,7 @@ func cmdServe(args []string) error {
 		LogTail:      func(n int) ([]string, error) { return events.TailFile(logPath, n) },
 		GameTime:     cachedGameTime(d, 20*time.Second),
 		Actors:       d.api.Actors,
-		MapImagePath: "/home/palworld/paladin-config/worldmap.png",
+		MapImagePath: cfg.worldMapFile(),
 		World:        makeWorldFunc(d),
 		Hub:          hub,
 		Static:       webserv.Assets(),
@@ -920,7 +952,7 @@ func makeCommitRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.Co
 			Staged:       staged,
 			WorldBackup:  backup.WorldBackupFunc(d.mgr, d.worldDir),
 			ReadSettings: d.api.Settings,
-			BackupAnchor: defBackups,
+			BackupAnchor: d.cfg.backupsDir(),
 		}
 
 		var ann []maintain.Announcement
@@ -980,9 +1012,12 @@ func makeWorldFunc(d *deps) webserv.WorldFunc {
 	cached := &sav.Cached{
 		TTL: time.Minute,
 		Parse: func(ctx context.Context) (*sav.World, error) {
-			cli, err := sav.FindCLI()
-			if err != nil {
-				return nil, err
+			cli := d.cfg.SavCLI
+			if cli == "" {
+				var err error
+				if cli, err = sav.FindCLI(); err != nil {
+					return nil, err
+				}
 			}
 			return sav.Runner{CLIPath: cli, WorldDir: d.worldDir}.Parse(ctx)
 		},
