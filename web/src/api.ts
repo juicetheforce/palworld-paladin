@@ -109,6 +109,22 @@ export interface SettingsKey {
   protected?: string | null;
 }
 
+export interface SavPal { owner: string; nickname: string; level: number }
+export interface SavPlayer {
+  player_uid: string; nickname: string; level: number; exp: number;
+  hp: number; max_hp: number; pals: SavPal[];
+}
+export interface SavGuildMember { player_uid: string; nickname: string; last_online: string }
+export interface SavGuild {
+  name: string; base_camp_level: number; admin_player_uid: string;
+  players: SavGuildMember[]; base_ids: string[];
+  base_camp: { id: string; state: number; transform: { x: number; y: number; z: number } }[];
+}
+export interface WorldResponse {
+  available: boolean; reason?: string; error?: string; parsed_at?: string;
+  players?: SavPlayer[]; guilds?: SavGuild[];
+}
+
 export interface HistoryEntry {
   time: string;
   action: string;
@@ -164,6 +180,7 @@ export const api = {
       body: JSON.stringify({ message }),
     }).then(j<{ ok: boolean }>),
   save: () => fetch("/api/admin/save", { method: "POST" }).then(j<{ ok: boolean }>),
+  world: () => fetch("/api/admin/world").then(j<WorldResponse>),
   adminBackups: () => fetch("/api/admin/backups").then(j<{ backups: BackupInfo[]; partials: number }>),
   deleteBackup: (id: string) => fetch(`/api/admin/backups/${id}`, { method: "DELETE" }).then(j<{ ok: boolean }>),
   createBackup: () => fetch("/api/admin/backups", { method: "POST" }).then(j<{ accepted: boolean }>),

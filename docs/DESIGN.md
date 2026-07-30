@@ -63,6 +63,40 @@
 > (`AutoSaveSpan` → `autoSaveSpan`). palapi shipped and green against the
 > live server; /metrics shape captured (incl. undocumented basecampnum).
 >
+> **Revision 18a — 2026-07-31 (addendum): first sidecar pin.**
+> **sav_cli pinned at PST v0.12.2** — the acquisition model is
+> pin-by-version / acquire-at-deploy / upgrade-deliberately (never
+> silent-latest, never a frozen local fork; upgrades are tested events
+> keyed to game patches that break the save format).
+> - URL (permanent per-tag):
+>   `https://github.com/zaigie/palworld-server-tool/releases/download/v0.12.2/pst_v0.12.2_linux_x86_64.tar.gz`
+> - Archive sha256: `831c87f3df171a1d63ddeb4e231b5427ead262cbc6466e0ff196ff08a6b35304`
+> - sav_cli binary sha256: `bff95acdaca261b1f3c1750b9f80bb6b1cfcbf830e9a1f42be49a8b56ce7b7d1`
+> - Archive layout: `LICENSE, NOTICE, pst, sav_cli` (top level; only
+>   `sav_cli` + `NOTICE` are taken). Binary verified runnable (linux
+>   x86_64, `--help` OK) in the build sandbox before deployment.
+> - Interface verified: `-f/--file`, `-o/--output` (file mode used by
+>   Paladin); `--request/--token` push mode unused. This pin seeds the
+>   future install.sh fetch step.
+>
+> **Revision 18 — 2026-07-31.** **Save-parser integration RESOLVED — the
+> last open architecture question.** Recon of PST's source settled it by
+> fact, not preference: PST has NO Go parser to link — its parser IS a
+> Python sidecar (`sav_cli`, Apache-2.0 wrapper), and its runtime deps
+> (palsav/ooz Oodle decompression for 1.0 saves) are **GPL-3.0** — linking
+> or vendoring would force GPL on Paladin. **Decided: sidecar process,
+> file-output mode** (`sav_cli -f Level.sav -o out.json` →
+> `{players, guilds}` with per-member `last_online`, base camps with world
+> transforms). The process boundary keeps Paladin's licensing untouched;
+> the sidecar binary is ACQUIRED AT DEPLOY (PST release asset →
+> `/home/palworld/paladin-tools/sav_cli`, or `PALADIN_SAV_CLI`), never
+> vendored — same posture as SteamCMD and the map artwork. Paladin's side:
+> staged-copy (never parse a mid-autosave file), 60s TTL cache with
+> single-flight, graceful "sidecar not installed" state that self-heals
+> without restart. Roster↔save identity note: live roster keys on
+> `steam_*` ids, the save on internal uids — nickname is the bridge; the
+> §6.7 offline-ban identifier question remains open (display-only for now).
+>
 > **Revision 17 — 2026-07-30.** Live-hardware corrections and confirmations
 > from the test box (both flags added to the unit and verified on the
 > running binary). (1) **The `-log` inference in rev 16 was WRONG and is

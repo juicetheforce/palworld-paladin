@@ -36,6 +36,7 @@ import (
 	"github.com/juicetheforce/palworld-paladin/internal/maintain"
 	"github.com/juicetheforce/palworld-paladin/internal/palapi"
 	"github.com/juicetheforce/palworld-paladin/internal/roster"
+	"github.com/juicetheforce/palworld-paladin/internal/sav"
 	"github.com/juicetheforce/palworld-paladin/internal/settings"
 	"github.com/juicetheforce/palworld-paladin/internal/steam"
 	"github.com/juicetheforce/palworld-paladin/internal/supervise"
@@ -666,6 +667,7 @@ func cmdServe(args []string) error {
 		GameTime:     cachedGameTime(d, 20*time.Second),
 		Actors:       d.api.Actors,
 		MapImagePath: "/home/palworld/paladin-config/worldmap.png",
+		World:        makeWorldFunc(d),
 		Hub:          hub,
 		Static:       webserv.Assets(),
 	})
@@ -968,4 +970,22 @@ func cachedGameTime(d *deps, ttl time.Duration) func(ctx context.Context) (strin
 		t, days, ok = gt.InGameTime, gt.InGameDays, true
 		return t, days, ok
 	}
+}
+
+// makeWorldFunc wires the save-parsing sidecar (§6.5 historical tier).
+// The CLI is looked up per parse (a cheap stat), so installing the sidecar
+// while Paladin runs starts working without a restart; results are cached
+// 60s with single-flight so page loads never stack expensive parses.
+func makeWorldFunc(d *deps) webserv.WorldFunc {
+	cached := &sav.Cached{
+		TTL: time.Minute,
+		Parse: func(ctx context.Context) (*sav.World, error) {
+			cli, err := sav.FindCLI()
+			if err != nil {
+				return nil, err
+			}
+			return sav.Runner{CLIPath: cli, WorldDir: d.worldDir}.Parse(ctx)
+		},
+	}
+	return cached.Get
 }
