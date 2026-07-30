@@ -233,6 +233,7 @@ function Dashboard() {
           <div className="server-name">{st.server_name || "—"}</div>
           <div className="server-desc clamp3">{st.description || "No description set."}</div>
           <div className="server-meta">
+            {st.in_game_time && <Meta k="In-game" v={`Day ${st.in_game_days} · ${st.in_game_time}`} />}
             <Meta k="Version" v={st.version || "—"} />
             <Meta k="World GUID" v={st.world_guid ? st.world_guid.slice(0, 12) + "…" : "—"} />
             <Meta k="Backups" v={`${st.backup_count}`} />

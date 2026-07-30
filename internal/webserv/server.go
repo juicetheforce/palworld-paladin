@@ -62,6 +62,7 @@ type Server struct {
 	commit         CommitRunner
 	commitBusy     atomic.Bool
 	logTail        func(n int) ([]string, error)
+	gameTime       func(ctx context.Context) (string, int, bool)
 	check          updateCheck
 	actions        *actionLog
 	hub            *events.Hub
@@ -93,6 +94,7 @@ type Config struct {
 	SettingsValues SettingsValuesFunc
 	Commit         CommitRunner
 	LogTail        func(n int) ([]string, error)
+	GameTime       func(ctx context.Context) (string, int, bool)
 	Hub            *events.Hub
 	Static         fs.FS
 }
@@ -108,7 +110,7 @@ func New(cfg Config) *Server {
 		memRestart: cfg.MemRestart, unitMemory: cfg.UnitMemory,
 		createBackup: cfg.CreateBackup, restore: cfg.Restore,
 		keyList: cfg.KeyList, settingsValues: cfg.SettingsValues, commit: cfg.Commit,
-		logTail: cfg.LogTail,
+		logTail: cfg.LogTail, gameTime: cfg.GameTime,
 		actions: newActionLog(100), hub: cfg.Hub, static: cfg.Static, mux: http.NewServeMux(),
 	}
 	s.routes()
@@ -272,6 +274,8 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 
 // StatusResponse is the dashboard payload (read-only; §6.5 live tier).
 type StatusResponse struct {
+	InGameTime  string  `json:"in_game_time,omitempty"`
+	InGameDays  int     `json:"in_game_days,omitempty"`
 	ServerName  string  `json:"server_name"`
 	Description string  `json:"description"`
 	Version     string  `json:"version"`
@@ -307,6 +311,11 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	resp.ServerName, resp.Description = info.ServerName, info.Description
 	resp.Version, resp.WorldGUID = info.Version, info.WorldGUID
 
+	if s.gameTime != nil {
+		if t, days, ok := s.gameTime(ctx); ok {
+			resp.InGameTime, resp.InGameDays = t, days
+		}
+	}
 	if m, err := s.status.Metrics(ctx); err == nil {
 		resp.FPS, resp.FPSAverage = m.ServerFPS, m.ServerFPSAverage
 		resp.FrameTime = m.ServerFrameTime

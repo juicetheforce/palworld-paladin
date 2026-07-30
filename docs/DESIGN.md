@@ -63,6 +63,28 @@
 > (`AutoSaveSpan` → `autoSaveSpan`). palapi shipped and green against the
 > live server; /metrics shape captured (incl. undocumented basecampnum).
 >
+> **Revision 17 — 2026-07-30.** Live-hardware corrections and confirmations
+> from the test box (both flags added to the unit and verified on the
+> running binary). (1) **The `-log` inference in rev 16 was WRONG and is
+> now corrected on real hardware:** the Palworld Linux shipping build
+> writes NO Pal.log even when launched with `-log` (flag confirmed present
+> on the running `PalServer-Linux-Shipping` process; no Logs/ directory
+> created). The live viewer's design already absorbed this — the roster
+> differ carries player events; the log-tail machinery stays dormant-but-
+> correct in case a future build enables logging; the viewer's content is
+> player events + Paladin operations. (2) **`-enable-gamedata-api` is
+> CONFIRMED WORKING on v1.0.1** (a launch window existed at 1.0 where the
+> endpoint could not be enabled at all): `GET /v1/api/game-data` returns a
+> live actor snapshot — players (nickname, steam_ userid, ip, level, HP)
+> AND wild Pals (species, level, HP, guild id, AI state e.g.
+> `BP_AIAction_Sleep_InNightWildPal`) — every actor with LocationX/Y/Z and
+> RotationZ. **The World Map's live layer therefore needs NOTHING from the
+> save parser**; its remaining work is coordinate transform (community
+> math) + PST tiles. (3) Bonus fields `InGameTime`/`InGameDays` (in-game
+> clock, world age) are surfaced on the dashboard Server card via a
+> 20s-cached read (the endpoint returns full actor data per call — too
+> heavy to poll uncached for a clock). Route is hyphenated: `/game-data`.
+>
 > **Revision 16 — 2026-07-29.** Two live-server findings + one feature spec.
 > (1) Palworld writes **no `Pal.log` unless launched with `-log`** — verified
 > on a live palworld-admin server (no Logs/ dir, no Pal.log anywhere; launch

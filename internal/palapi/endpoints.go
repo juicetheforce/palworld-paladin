@@ -172,3 +172,23 @@ func (c *Client) Shutdown(ctx context.Context, waitSeconds int, message string) 
 func (c *Client) Stop(ctx context.Context) error {
 	return c.post(ctx, "/stop", nil)
 }
+
+// GameTime is the in-game clock slice of /v1/api/game-data (which requires
+// the -enable-gamedata-api launch flag; rev 17). Decoding into this struct
+// discards the (potentially large) ActorData — callers who want actors use
+// a fuller accessor when the map is built.
+type GameTime struct {
+	InGameTime string `json:"InGameTime"` // "23:52"
+	InGameDays int    `json:"InGameDays"`
+}
+
+// GameTime reads the in-game clock. Servers launched without the flag
+// return a route-not-found error; callers treat that as "unavailable",
+// not a fault.
+func (c *Client) GameTime(ctx context.Context) (*GameTime, error) {
+	var out GameTime
+	if err := c.get(ctx, "/game-data", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

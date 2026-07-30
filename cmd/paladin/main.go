@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/juicetheforce/palworld-paladin/internal/backup"
@@ -647,9 +648,10 @@ func cmdServe(args []string) error {
 			}
 			return p.MemoryCurrent, nil
 		},
-		LogTail: func(n int) ([]string, error) { return events.TailFile(logPath, n) },
-		Hub:     hub,
-		Static:  webserv.Assets(),
+		LogTail:  func(n int) ([]string, error) { return events.TailFile(logPath, n) },
+		GameTime: cachedGameTime(d, 20*time.Second),
+		Hub:      hub,
+		Static:   webserv.Assets(),
 	})
 	recordAction = srv.RecordAction
 	if auth.NeedsSetup() {
@@ -920,5 +922,34 @@ func makeCommitRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.Co
 			hub.Error("commit", "Commit did not complete: "+out.Detail)
 		}
 		return webserv.CommitResult{Status: string(out.Status), Detail: out.Detail}
+	}
+}
+
+// cachedGameTime wraps the in-game clock read (/game-data, rev 17) with a
+// short cache: the status endpoint is polled every few seconds by several
+// views, and game-data returns the full actor list each call — too heavy
+// to re-fetch per poll just for a clock. Graceful absence: a server
+// launched without -enable-gamedata-api reports ok=false and the card
+// simply omits the line.
+func cachedGameTime(d *deps, ttl time.Duration) func(ctx context.Context) (string, int, bool) {
+	var mu sync.Mutex
+	var at time.Time
+	var t string
+	var days int
+	var ok bool
+	return func(ctx context.Context) (string, int, bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		if time.Since(at) < ttl {
+			return t, days, ok
+		}
+		at = time.Now()
+		gt, err := d.api.GameTime(ctx)
+		if err != nil {
+			ok = false
+			return "", 0, false
+		}
+		t, days, ok = gt.InGameTime, gt.InGameDays, true
+		return t, days, ok
 	}
 }
