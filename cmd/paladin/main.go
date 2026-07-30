@@ -57,6 +57,7 @@ const (
 	defSafetyHold = "/home/palworld/paladin-safety" // relocated pre-restore copies live here
 	defAuthFile   = "/home/palworld/paladin-config/auth.json"
 	defMemRestart = "/home/palworld/paladin-config/memrestart.json"
+	defEventLog   = "/home/palworld/paladin-logs/events.jsonl"
 	defWebAddr    = "127.0.0.1:8080"
 )
 
@@ -553,6 +554,19 @@ func cmdServe(args []string) error {
 		return err
 	}
 	memCfg = memStore.Get
+
+	// Event persistence (rev 17: the game writes no logs, so Paladin's
+	// event history is the only history there is). Seed the hub's ring
+	// from the last run's events, then persist ring-worthy events as they
+	// happen. A failed open degrades to in-memory-only, loudly.
+	if evlog, err := events.OpenEventLog(defEventLog, 1<<20); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: event log unavailable ("+err.Error()+") — history will not survive restarts")
+	} else {
+		if loaded, err := events.LoadRecent(defEventLog, 100); err == nil && len(loaded) > 0 {
+			hub.Seed(loaded)
+		}
+		hub.SetPersist(func(e events.Event) { evlog.Append(e) })
+	}
 
 	// Roster differ (rev 16): player join/leave events from REST polling —
 	// the launch-flag-independent player-event source. Baseline poll is

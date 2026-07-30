@@ -41,12 +41,39 @@ type Event struct {
 
 // Hub fans events out to all current subscribers.
 type Hub struct {
-	mu     sync.RWMutex
-	subs   map[int]chan Event
-	nextID int
-	bufLen int
-	seq    uint64
-	recent []Event // ring of recent non-log events (history for page loads)
+	mu      sync.RWMutex
+	subs    map[int]chan Event
+	nextID  int
+	bufLen  int
+	seq     uint64
+	recent  []Event     // ring of recent non-log events (history for page loads)
+	persist func(Event) // optional: called (synchronously) for ring-worthy events
+}
+
+// SetPersist installs the persistence sink (call before serving). Only
+// ring-worthy (non-log) events are persisted — parity with what Recent()
+// would have shown before a restart.
+func (h *Hub) SetPersist(fn func(Event)) {
+	h.mu.Lock()
+	h.persist = fn
+	h.mu.Unlock()
+}
+
+// Seed preloads history (e.g. from the event log) into the recent ring and
+// continues the sequence counter past the highest seeded seq so live
+// events never collide with replayed ones in frontend dedup.
+func (h *Hub) Seed(evs []Event) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, e := range evs {
+		if e.Seq > h.seq {
+			h.seq = e.Seq
+		}
+		h.recent = append(h.recent, e)
+	}
+	if len(h.recent) > recentCap {
+		h.recent = h.recent[len(h.recent)-recentCap:]
+	}
 }
 
 // recentCap: how many of Paladin's own events survive for tail-on-connect.
@@ -101,13 +128,18 @@ func (h *Hub) Publish(e Event) {
 	h.mu.Lock()
 	h.seq++
 	e.Seq = h.seq
-	if e.Kind != KindLog { // log lines: the file is their history
+	var persist func(Event)
+	if e.Kind != KindLog { // log lines are not ring-worthy (rev 17: none exist anyway)
 		h.recent = append(h.recent, e)
 		if len(h.recent) > recentCap {
 			h.recent = h.recent[len(h.recent)-recentCap:]
 		}
+		persist = h.persist
 	}
 	h.mu.Unlock()
+	if persist != nil {
+		persist(e) // outside the lock; file append must not block the hub
+	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, ch := range h.subs {
