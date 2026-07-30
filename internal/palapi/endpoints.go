@@ -192,3 +192,30 @@ func (c *Client) GameTime(ctx context.Context) (*GameTime, error) {
 	}
 	return &out, nil
 }
+
+// Actor is one entry of /v1/api/game-data's ActorData (rev 17).
+type Actor struct {
+	UnitType  string  `json:"UnitType"` // "Player" | "WildPal" | ...
+	NickName  string  `json:"NickName"`
+	UserID    string  `json:"userid"`
+	Level     int     `json:"level"`
+	HP        float64 `json:"HP"`
+	MaxHP     float64 `json:"MaxHP"`
+	Class     string  `json:"Class"` // species blueprint for Pals
+	LocationX float64 `json:"LocationX"`
+	LocationY float64 `json:"LocationY"`
+	RotationZ float64 `json:"RotationZ"`
+	IsActive  string  `json:"IsActive"`
+}
+
+// Actors reads the full live actor snapshot (requires the
+// -enable-gamedata-api launch flag).
+func (c *Client) Actors(ctx context.Context) ([]Actor, error) {
+	var out struct {
+		ActorData []Actor `json:"ActorData"`
+	}
+	if err := c.get(ctx, "/game-data", &out); err != nil {
+		return nil, err
+	}
+	return out.ActorData, nil
+}

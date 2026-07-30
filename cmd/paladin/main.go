@@ -662,10 +662,12 @@ func cmdServe(args []string) error {
 			}
 			return p.MemoryCurrent, nil
 		},
-		LogTail:  func(n int) ([]string, error) { return events.TailFile(logPath, n) },
-		GameTime: cachedGameTime(d, 20*time.Second),
-		Hub:      hub,
-		Static:   webserv.Assets(),
+		LogTail:      func(n int) ([]string, error) { return events.TailFile(logPath, n) },
+		GameTime:     cachedGameTime(d, 20*time.Second),
+		Actors:       d.api.Actors,
+		MapImagePath: "/home/palworld/paladin-config/worldmap.png",
+		Hub:          hub,
+		Static:       webserv.Assets(),
 	})
 	recordAction = srv.RecordAction
 	if auth.NeedsSetup() {

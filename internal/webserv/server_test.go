@@ -782,3 +782,49 @@ func TestSettingsGetAndCommit(t *testing.T) {
 		t.Fatalf("runner must receive typed value: %#v", gotStaged)
 	}
 }
+
+// ---- world map ----
+
+func TestMapActorsTransform(t *testing.T) {
+	auth, _ := LoadAuthStore(filepath.Join(t.TempDir(), "auth.json"))
+	auth.SetAdminPassword("admin", "hunter2hunter2")
+	s := New(Config{
+		Auth: auth, Sessions: NewSessionStore(0),
+		Status: fakeStatus{info: &palapi.Info{}},
+		Actors: func(context.Context) ([]palapi.Actor, error) {
+			return []palapi.Actor{
+				// palworld-coord's own worked example: this sav position
+				// must land at Paldex (-134, -94).
+				{UnitType: "Player", NickName: "anubis-spot", LocationX: -167230, LocationY: 96430, IsActive: "true"},
+				{UnitType: "WildPal", NickName: "Lamball", Level: 3, LocationX: -351740, LocationY: 267486, IsActive: "true"},
+			}, nil
+		},
+		Static: fstest.MapFS{"index.html": {Data: []byte("x")}},
+	})
+	h := s.Handler()
+	ck := authedCookie(t, h)
+
+	resp := do(t, h, "GET", "/api/admin/map-actors", "", ck)
+	var body struct {
+		Available bool       `json:"available"`
+		Actors    []mapActor `json:"actors"`
+	}
+	json.NewDecoder(resp.Body).Decode(&body)
+	if !body.Available || len(body.Actors) != 2 {
+		t.Fatalf("bad response: %+v", body)
+	}
+	p := body.Actors[0]
+	if p.Kind != "player" || int(p.MapX+0.5*sign(p.MapX)) != -134 || int(p.MapY+0.5*sign(p.MapY)) != -94 {
+		t.Fatalf("transform must match palworld-coord's example (-134,-94): got (%.1f, %.1f)", p.MapX, p.MapY)
+	}
+	if body.Actors[1].Kind != "pal" || body.Actors[1].Species != "Lamball" {
+		t.Fatalf("wild pal must carry species: %+v", body.Actors[1])
+	}
+}
+
+func sign(f float64) float64 {
+	if f < 0 {
+		return -1
+	}
+	return 1
+}

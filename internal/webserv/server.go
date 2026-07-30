@@ -63,6 +63,8 @@ type Server struct {
 	commitBusy     atomic.Bool
 	logTail        func(n int) ([]string, error)
 	gameTime       func(ctx context.Context) (string, int, bool)
+	actors         ActorsFunc
+	mapImagePath   string
 	check          updateCheck
 	actions        *actionLog
 	hub            *events.Hub
@@ -95,6 +97,8 @@ type Config struct {
 	Commit         CommitRunner
 	LogTail        func(n int) ([]string, error)
 	GameTime       func(ctx context.Context) (string, int, bool)
+	Actors         ActorsFunc
+	MapImagePath   string
 	Hub            *events.Hub
 	Static         fs.FS
 }
@@ -111,6 +115,7 @@ func New(cfg Config) *Server {
 		createBackup: cfg.CreateBackup, restore: cfg.Restore,
 		keyList: cfg.KeyList, settingsValues: cfg.SettingsValues, commit: cfg.Commit,
 		logTail: cfg.LogTail, gameTime: cfg.GameTime,
+		actors: cfg.Actors, mapImagePath: cfg.MapImagePath,
 		actions: newActionLog(100), hub: cfg.Hub, static: cfg.Static, mux: http.NewServeMux(),
 	}
 	s.routes()
@@ -140,6 +145,8 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /api/admin/history", s.requireAuth(http.HandlerFunc(s.handleHistory)))
 	s.mux.Handle("GET /api/events", s.requireAuth(http.HandlerFunc(s.handleEvents)))
 	s.mux.Handle("GET /api/events/recent", s.requireAuth(http.HandlerFunc(s.handleEventsRecent)))
+	s.mux.Handle("GET /api/admin/map-actors", s.requireAuth(http.HandlerFunc(s.handleMapActors)))
+	s.mux.Handle("GET /api/map-image", s.requireAuth(http.HandlerFunc(s.handleMapImage)))
 	s.mux.Handle("POST /api/admin/update", s.requireAuth(http.HandlerFunc(s.handleUpdate)))
 	s.mux.Handle("GET /api/admin/update-check", s.requireAuth(http.HandlerFunc(s.handleUpdateCheckGet)))
 	s.mux.Handle("POST /api/admin/update-check", s.requireAuth(http.HandlerFunc(s.handleUpdateCheckRefresh)))
