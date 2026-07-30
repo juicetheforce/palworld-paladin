@@ -17,7 +17,7 @@ interface MapActor {
 // map is NOT centered on the coordinate origin — the island expansions
 // stretched it far south — hence the asymmetric Y range. Nudge these if
 // markers drift: 1% of the image ≈ 22 paldex units.
-const XMIN = -1100, XMAX = 1100, YMIN = -1520, YMAX = 680;
+const XMIN = -1290, XMAX = 910, YMIN = -1650, YMAX = 550;
 
 export function WorldMap() {
   const [actors, setActors] = useState<MapActor[]>([]);
