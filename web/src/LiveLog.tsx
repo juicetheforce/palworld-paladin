@@ -17,8 +17,12 @@ export function LiveLog({ events, connected, onClear }: {
   // Auto-scroll to bottom only if the user is already near the bottom, so
   // scrolling up to read history isn't yanked back down by new lines.
   useEffect(() => {
-    if (pinnedRef.current && endRef.current) {
-      endRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+    // Scroll the log CONTAINER, never the page: scrollIntoView scrolls
+    // every ancestor, which yanked whole pages (Server Settings!) down to
+    // the feed on load.
+    const el = bodyRef.current;
+    if (pinnedRef.current && el) {
+      el.scrollTop = el.scrollHeight;
     }
   }, [events]);
 

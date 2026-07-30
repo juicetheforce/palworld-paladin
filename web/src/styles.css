@@ -89,7 +89,11 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 20px;
 }
-.card.hero { grid-column: span 4; grid-row: span 2; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.card.hero { display: flex; flex-direction: row; align-items: center; gap: 24px; }
+.card.hero .dial-wrap { flex-shrink: 0; width: 150px; height: 150px; }
+.card.hero .dial-num .v { font-size: 36px; }
+.hero-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.hero-side .dial-caption { margin-top: 0; }
 .card.span3 { grid-column: span 3; }
 .card.span4 { grid-column: span 4; }
 .card.span8 { grid-column: span 8; }

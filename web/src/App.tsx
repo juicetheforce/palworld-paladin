@@ -240,9 +240,9 @@ function Dashboard() {
         {st.online && isVisible("fps") && (
         <div className="card hero span8">
           <FpsDial fps={st.fps} />
-          <div className="dial-caption">avg {st.fps_average.toFixed(1)} · frame {st.frame_time_ms.toFixed(1)} ms</div>
-          <div style={{ width: "100%", marginTop: 12 }}>
-            <Sparkline data={fpsHist} min={0} max={70}
+          <div className="hero-side">
+            <div className="dial-caption">avg {st.fps_average.toFixed(1)} · frame {st.frame_time_ms.toFixed(1)} ms · up {formatUptime(st.uptime_sec)}</div>
+            <Sparkline data={fpsHist} min={0} max={70} height={64}
               color={st.fps >= 45 ? "var(--good)" : st.fps >= 25 ? "var(--warn)" : "var(--bad)"} />
           </div>
         </div>
@@ -264,7 +264,6 @@ function Dashboard() {
 
         {st.online && isVisible("players") && <StatCard className="span4" label="Players online" value={`${st.players}`}
           unit={`/ ${st.max_players}`} sub={`${st.bases} bases · day ${st.days}`} />}
-        {st.online && isVisible("uptime") && <StatCard className="span4" label="Uptime" value={formatUptime(st.uptime_sec)} sub="since last start" />}
         {host?.temp_available && isVisible("temp") && (
         <div className="card span4">
           <div className="card-label">CPU Temp</div>
@@ -391,7 +390,7 @@ function FpsDial({ fps }: { fps: number }) {
 
   return (
     <div className="dial-wrap">
-      <svg viewBox="0 0 200 200" width="200" height="200">
+      <svg viewBox="0 0 200 200" width="100%" height="100%">
         {/* track */}
         <path d={`M ${sx} ${sy} A ${r} ${r} 0 1 1 ${fx} ${fy}`}
           fill="none" stroke="var(--border-lit)" strokeWidth="12" strokeLinecap="round" />

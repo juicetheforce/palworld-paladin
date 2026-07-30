@@ -1,12 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
-import { api, HistoryEntry, UpdateCheckResponse, MemRestartConfig } from "./api";
+import { api, UpdateCheckResponse, MemRestartConfig } from "./api";
 import { InfoLabel } from "./InfoLabel";
 import { useServerState } from "./useServerState";
 import { useEventStream } from "./useEventStream";
 import { LiveLog } from "./LiveLog";
 
 export function ServerAdmin() {
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [broadcastMsg, setBroadcastMsg] = useState("");
   const [warnMsg, setWarnMsg] = useState("Server maintenance shortly — please reach a safe spot.");
   const [delay, setDelay] = useState(30);
@@ -25,7 +24,6 @@ export function ServerAdmin() {
   const [memSaving, setMemSaving] = useState(false);
 
   const load = useCallback(() => {
-    api.history().then((r) => setHistory(r.history ?? [])).catch(() => {});
     api.memRestart().then((r) => {
       if (r.available) {
         setMemNow(r.current_memory_bytes ?? null);
@@ -252,21 +250,6 @@ export function ServerAdmin() {
           </button>
         </div>
 
-        {/* History */}
-        <div className="card span6">
-          <div className="card-label">Recent actions</div>
-          <div className="admin-history">
-            {history.length === 0 && <div className="pempty">No actions yet this session.</div>}
-            {history.map((h, i) => (
-              <div key={i} className="history-row">
-                <span className={"history-dot " + (h.ok ? "ok" : "bad")} />
-                <span className="history-action">{h.action}</span>
-                {h.detail && <span className="history-detail">{h.detail}</span>}
-                <span className="history-time">{new Date(h.time).toLocaleTimeString()}</span>
-              </div>
-            ))}
-          </div>
-        </div>
 
         {/* Live activity (SSE) */}
         <div className="livelog-wrap">
