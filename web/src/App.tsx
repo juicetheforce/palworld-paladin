@@ -270,11 +270,11 @@ function HostCards({ host, rxHist, txHist, gameMemHist, memThreshold, isVisible 
         <div><span className="stat-big" style={{ color: cpuColor(host.cpu_usage) }}>{host.cpu_usage.toFixed(0)}</span><span className="stat-unit">%</span></div>
         <div className="stat-sub">
           busiest core {host.cpu_hottest_core.toFixed(0)}%
-          {host.cpu_steal > 1 && (
+          {host.is_vm && (
             <span
               className="cpu-steal"
-              style={{ color: host.cpu_steal > 10 ? "var(--bad)" : "var(--warn)" }}
-              title="Steal time: CPU cycles this VM wanted but the hypervisor gave to other guests. Persistent steal means the HOST is oversubscribed — the lag isn't Palworld's fault."
+              style={{ color: host.cpu_steal > 10 ? "var(--bad)" : host.cpu_steal > 1 ? "var(--warn)" : undefined }}
+              title="Steal time: CPU cycles this VM wanted but the hypervisor gave to other guests. Persistent steal means the HOST is oversubscribed — the lag isn't Palworld's fault. Only measured on virtual machines."
             >
               {" "}· steal {host.cpu_steal.toFixed(0)}%
             </span>

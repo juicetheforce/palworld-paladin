@@ -29,6 +29,7 @@ export interface HostSnapshot {
   cpu_usage: number;
   cpu_hottest_core: number;
   cpu_steal: number;
+  is_vm: boolean;
   cpu_available: boolean;
   mem_total: number;
   mem_available: number;

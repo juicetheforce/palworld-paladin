@@ -28,6 +28,7 @@ type Snapshot struct {
 	CPUUsage     float64 `json:"cpu_usage"`        // overall
 	CPUHottest   float64 `json:"cpu_hottest_core"` // busiest single core
 	CPUSteal     float64 `json:"cpu_steal"`        // %st — VM contention signal
+	IsVM         bool    `json:"is_vm"`            // hypervisor flag in /proc/cpuinfo
 	CPUAvailable bool    `json:"cpu_available"`
 
 	// Memory (bytes)
@@ -105,6 +106,18 @@ func readCPUStatic(s *Snapshot) {
 		case "cpu MHz":
 			if s.CPUMHz == 0 {
 				s.CPUMHz, _ = strconv.ParseFloat(v, 64)
+			}
+		case "flags":
+			// The hypervisor flag marks a guest: steal time is a real
+			// measurement there. Bare metal never sets it — steal is
+			// structurally zero, so the UI hides it entirely.
+			if !s.IsVM {
+				for _, fl := range strings.Fields(v) {
+					if fl == "hypervisor" {
+						s.IsVM = true
+						break
+					}
+				}
 			}
 		}
 	}
