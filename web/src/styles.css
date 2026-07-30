@@ -404,8 +404,8 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .grid-line.v { top: 0; bottom: 0; width: 1px; }
 .grid-line.h { left: 0; right: 0; height: 1px; }
 .grid-label { position: absolute; font-size: 9px; color: var(--text-faint); transform: translate(-50%, 0); font-family: ui-monospace, monospace; }
-.map-dot { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; }
-.map-dot.pal { width: 6px; height: 6px; background: color-mix(in srgb, var(--warn) 75%, transparent); box-shadow: 0 0 6px -1px var(--warn); }
+.map-dot { position: absolute; border-radius: 50%; }
+.map-dot.pal { width: 9px; height: 9px; background: color-mix(in srgb, var(--warn) 75%, transparent); box-shadow: 0 0 6px -1px var(--warn); }
 .map-dot.player { width: 12px; height: 12px; background: var(--accent); border: 2px solid #fff3; box-shadow: 0 0 14px -2px var(--accent), 0 0 4px var(--accent); z-index: 2; }
 .map-name {
   position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
@@ -423,3 +423,10 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .map-hint { color: var(--text-faint); }
 .map-note { margin-top: 12px; font-size: 12px; color: var(--text-dim); }
 .map-note code { color: var(--accent); font-size: 11px; }
+
+/* ---- game-memory threshold chart (memory card) ---- */
+.gamemem { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+.gamemem-head { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+.gamemem-thr { color: var(--warn); }
+.gamemem-chart { position: relative; }
+.thr-line { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--warn); opacity: 0.8; pointer-events: none; }

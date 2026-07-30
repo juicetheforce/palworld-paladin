@@ -80,7 +80,7 @@ function AuthScreen({ mode, onDone }: { mode: "setup" | "login"; onDone: () => v
 
 // ---- app shell ----
 
-type Section = "dashboard" | "players" | "map" | "settings" | "backups" | "console" | "metrics";
+type Section = "dashboard" | "players" | "map" | "settings" | "backups" | "console";
 
 const NAV: { id: Section; label: string; icon: string; ready?: boolean }[] = [
   { id: "dashboard", label: "Dashboard", icon: "▮", ready: true },
@@ -89,7 +89,6 @@ const NAV: { id: Section; label: string; icon: string; ready?: boolean }[] = [
   { id: "settings", label: "Server Settings", icon: "⚙", ready: true },
   { id: "backups", label: "Backups", icon: "❒", ready: true },
   { id: "console", label: "Server Admin", icon: "❯", ready: true },
-  { id: "metrics", label: "Metrics", icon: "◔" },
 ];
 
 function Shell({ onLogout }: { onLogout: () => void }) {
@@ -156,6 +155,8 @@ function Dashboard() {
   const [err, setErr] = useState("");
   const [fpsHist, setFpsHist] = useState<number[]>([]);
   const [rxHist, setRxHist] = useState<number[]>([]);
+  const [gameMemHist, setGameMemHist] = useState<number[]>([]);
+  const [memThreshold, setMemThreshold] = useState<number | null>(null); // bytes, null = disabled
   const [txHist, setTxHist] = useState<number[]>([]);
   const { isVisible, toggle, reset } = usePrefs();
 
@@ -169,6 +170,13 @@ function Dashboard() {
           if (s.online) setFpsHist((h) => pushCapped(h, s.fps));
         })
         .catch((e) => alive && setErr((e as Error).message));
+      api.memRestart()
+        .then((r) => {
+          if (!alive || !r.available) return;
+          if (r.current_memory_bytes !== undefined) setGameMemHist((h) => pushCapped(h, r.current_memory_bytes!));
+          setMemThreshold(r.config?.enabled && r.config.threshold_gb > 0 ? r.config.threshold_gb * (1 << 30) : null);
+        })
+        .catch(() => {});
       api.host()
         .then((h) => {
           if (!alive || h.available === false) return;
@@ -242,7 +250,7 @@ function Dashboard() {
         </div>
         )}
 
-        {host && <HostCards host={host} rxHist={rxHist} txHist={txHist} isVisible={isVisible} />}
+        {host && <HostCards host={host} rxHist={rxHist} txHist={txHist} isVisible={isVisible} gameMemHist={gameMemHist} memThreshold={memThreshold} />}
       </div>
     </>
   );
@@ -250,7 +258,7 @@ function Dashboard() {
 
 // Host-metric cards. Temp card hides itself when the host exposes no
 // sensors (VMs) — by design, not failure (§6.5).
-function HostCards({ host, rxHist, txHist, isVisible }: { host: HostSnapshot; rxHist: number[]; txHist: number[]; isVisible: (id: string) => boolean }) {
+function HostCards({ host, rxHist, txHist, gameMemHist, memThreshold, isVisible }: { host: HostSnapshot; rxHist: number[]; txHist: number[]; gameMemHist: number[]; memThreshold: number | null; isVisible: (id: string) => boolean }) {
   const memPct = host.mem_total ? (host.mem_used / host.mem_total) * 100 : 0;
   return (
     <>
@@ -270,6 +278,22 @@ function HostCards({ host, rxHist, txHist, isVisible }: { host: HostSnapshot; rx
         <div className="card-label">Memory</div>
         <div><span className="stat-big" style={{ color: memPct > 90 ? "var(--bad)" : memPct > 75 ? "var(--warn)" : "var(--text)" }}>{fmtBytes(host.mem_used)}</span><span className="stat-unit">/ {fmtBytes(host.mem_total)}</span></div>
         <div className="stat-sub">{memPct.toFixed(0)}% used{host.swap_used > 0 ? ` · swap ${fmtBytes(host.swap_used)}` : ""}</div>
+        {gameMemHist.length > 1 && (
+          <div className="gamemem">
+            <div className="gamemem-head">
+              <span>Game: {fmtBytes(gameMemHist[gameMemHist.length - 1])}</span>
+              {memThreshold && <span className="gamemem-thr">restart at {fmtBytes(memThreshold)}</span>}
+            </div>
+            <div className="gamemem-chart">
+              <Sparkline data={gameMemHist} min={0}
+                max={memThreshold ? memThreshold * 1.15 : Math.max(...gameMemHist) * 1.3}
+                color="var(--accent)" height={38} />
+              {memThreshold && (
+                <div className="thr-line" style={{ bottom: `${(memThreshold / (memThreshold * 1.15)) * 100}%` }} />
+              )}
+            </div>
+          </div>
+        )}
       </div>
       )}
 
