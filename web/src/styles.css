@@ -377,3 +377,19 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .act-row.k-error .act-msg { color: var(--bad); }
 .act-row.k-done .act-msg { color: var(--good); }
 .act-empty { font-size: 12px; color: var(--text-faint); }
+
+/* ---- players nav count badge ---- */
+.nav-count {
+  margin-left: auto; font-size: 10px; font-weight: 700;
+  font-variant-numeric: tabular-nums; line-height: 1;
+  padding: 3px 7px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-faint);
+  border: 1px solid var(--border-lit);
+}
+.nav-count.lit {
+  color: var(--good);
+  background: color-mix(in srgb, var(--good) 14%, transparent);
+  border-color: color-mix(in srgb, var(--good) 40%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--good) 70%, transparent);
+  box-shadow: 0 0 10px -2px color-mix(in srgb, var(--good) 45%, transparent);
+}

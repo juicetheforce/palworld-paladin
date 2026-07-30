@@ -3,6 +3,7 @@ import { api, StatusResponse, SessionState, HostSnapshot } from "./api";
 import { Sparkline } from "./Sparkline";
 import { usePrefs } from "./usePrefs";
 import { useEventStream, LiveEvent } from "./useEventStream";
+import { useServerState } from "./useServerState";
 import { CustomizeMenu } from "./CustomizeMenu";
 import { Players } from "./Players";
 import { OfflineNotice } from "./OfflineNotice";
@@ -93,6 +94,7 @@ const NAV: { id: Section; label: string; icon: string; ready?: boolean }[] = [
 function Shell({ onLogout }: { onLogout: () => void }) {
   const [section, setSection] = useState<Section>("dashboard");
   const logout = async () => { await api.logout(); onLogout(); };
+  const { online, players } = useServerState(10000);
 
   return (
     <div className="shell">
@@ -107,6 +109,9 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           >
             <span className="ico">{n.icon}</span>
             {n.label}
+            {n.id === "players" && online && players !== null && (
+              <span className={"nav-count" + (players > 0 ? " lit" : "")}>{players}</span>
+            )}
             {!n.ready && <span className="soon">soon</span>}
           </div>
         ))}
