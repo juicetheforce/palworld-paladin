@@ -12,12 +12,14 @@ interface MapActor {
   rot: number;
 }
 
-// Paldex coordinate bounds of the map artwork, calibrated against a live
-// player position (in-game (242,-510) at the starting plateau). The 1.0
-// map is NOT centered on the coordinate origin — the island expansions
-// stretched it far south — hence the asymmetric Y range. Nudge these if
-// markers drift: 1% of the image ≈ 22 paldex units.
-const XMIN = -1290, XMAX = 910, YMIN = -1650, YMAX = 550;
+// Paldex coordinate bounds of the bundled artwork, solved EXACTLY from
+// two-point calibration (2048px image; in-game (242,-510)=px(1404,999)
+// and (245,-309)=px(1406,932)): scale = 3.000 paldex units/pixel (the
+// stitched leaflet tile world is a power-of-two canvas ~3x larger than
+// the island — why every eyeball estimate failed), north edge solved
+// identically from both points (2487). If the artwork is ever replaced,
+// recalibrate with two (in-game coord ↔ pixel) pairs the same way.
+const XMIN = -3971, XMAX = 2173, YMIN = -3657, YMAX = 2487;
 
 export function WorldMap() {
   const [actors, setActors] = useState<MapActor[]>([]);
@@ -139,7 +141,7 @@ export function WorldMap() {
 
 function MapGrid() {
   const lines = [];
-  for (let c = -1500; c <= 1500; c += 250) {
+  for (let c = -3500; c <= 2000; c += 500) {
     const pxl = ((c - XMIN) / (XMAX - XMIN)) * 100;
     const pyl = ((YMAX - c) / (YMAX - YMIN)) * 100;
     if (pxl >= 0 && pxl <= 100) {

@@ -103,10 +103,17 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   // present — no background timers when nobody's watching.
   useEffect(() => {
     let alive = true;
-    const tick = () => api.updateCheck().then((r) => alive && setUpdAvail(!!r.update_available)).catch(() => {});
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => api.updateCheck().then((r) => {
+      if (!alive) return;
+      setUpdAvail(!!r.update_available);
+      // A check in flight (e.g. the first after startup) has no verdict
+      // yet — re-ask shortly so the badge lights when it lands, instead
+      // of waiting out the long cadence.
+      timer = setTimeout(tick, r.checking ? 10_000 : 5 * 60_000);
+    }).catch(() => { if (alive) timer = setTimeout(tick, 5 * 60_000); });
     tick();
-    const id = setInterval(tick, 15 * 60 * 1000);
-    return () => { alive = false; clearInterval(id); };
+    return () => { alive = false; clearTimeout(timer); };
   }, []);
 
   return (
