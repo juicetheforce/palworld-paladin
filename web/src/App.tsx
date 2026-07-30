@@ -95,6 +95,19 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   const [section, setSection] = useState<Section>("dashboard");
   const logout = async () => { await api.logout(); onLogout(); };
   const { online, players } = useServerState(10000);
+  const [updAvail, setUpdAvail] = useState(false);
+
+  // Update-availability for the nav badge: consulted on app load and every
+  // 15 minutes while Paladin is open. The backend lazily refreshes its
+  // cache when stale (>1h), so checks still only happen because a human is
+  // present — no background timers when nobody's watching.
+  useEffect(() => {
+    let alive = true;
+    const tick = () => api.updateCheck().then((r) => alive && setUpdAvail(!!r.update_available)).catch(() => {});
+    tick();
+    const id = setInterval(tick, 15 * 60 * 1000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
 
   return (
     <div className="shell">
@@ -111,6 +124,9 @@ function Shell({ onLogout }: { onLogout: () => void }) {
             {n.label}
             {n.id === "players" && online && players !== null && (
               <span className={"nav-count" + (players > 0 ? " lit" : "")}>{players}</span>
+            )}
+            {n.id === "console" && updAvail && (
+              <span className="nav-alert" title="Server update available">!</span>
             )}
             {!n.ready && <span className="soon">soon</span>}
           </div>
@@ -222,7 +238,7 @@ function Dashboard() {
 
       <div className="grid">
         {st.online && isVisible("fps") && (
-        <div className="card hero">
+        <div className="card hero span8">
           <FpsDial fps={st.fps} />
           <div className="dial-caption">avg {st.fps_average.toFixed(1)} · frame {st.frame_time_ms.toFixed(1)} ms</div>
           <div style={{ width: "100%", marginTop: 12 }}>
@@ -231,10 +247,6 @@ function Dashboard() {
           </div>
         </div>
         )}
-
-        {st.online && isVisible("players") && <StatCard className="span4" label="Players online" value={`${st.players}`}
-          unit={`/ ${st.max_players}`} sub={`${st.bases} bases · day ${st.days}`} />}
-        {st.online && isVisible("uptime") && <StatCard className="span4" label="Uptime" value={formatUptime(st.uptime_sec)} sub="since last start" />}
 
         {st.online && isVisible("server") && (
         <div className="card span4">
@@ -250,6 +262,18 @@ function Dashboard() {
         </div>
         )}
 
+        {st.online && isVisible("players") && <StatCard className="span4" label="Players online" value={`${st.players}`}
+          unit={`/ ${st.max_players}`} sub={`${st.bases} bases · day ${st.days}`} />}
+        {st.online && isVisible("uptime") && <StatCard className="span4" label="Uptime" value={formatUptime(st.uptime_sec)} sub="since last start" />}
+        {host?.temp_available && isVisible("temp") && (
+        <div className="card span4">
+          <div className="card-label">CPU Temp</div>
+          <div><span className="stat-big" style={{ color: host.cpu_temp > 85 ? "var(--bad)" : host.cpu_temp > 70 ? "var(--warn)" : "var(--good)" }}>{host.cpu_temp.toFixed(0)}</span><span className="stat-unit">°C</span></div>
+          <div className="stat-sub">package temperature</div>
+        </div>
+        )}
+
+
         {host && <HostCards host={host} rxHist={rxHist} txHist={txHist} isVisible={isVisible} gameMemHist={gameMemHist} memThreshold={memThreshold} />}
       </div>
     </>
@@ -262,8 +286,6 @@ function HostCards({ host, rxHist, txHist, gameMemHist, memThreshold, isVisible 
   const memPct = host.mem_total ? (host.mem_used / host.mem_total) * 100 : 0;
   return (
     <>
-      {isVisible("activity") && <ActivityCard />}
-
       {isVisible("cpu") && (
       <div className="card span4">
         <div className="card-label">CPU</div>
@@ -308,16 +330,9 @@ function HostCards({ host, rxHist, txHist, gameMemHist, memThreshold, isVisible 
       </div>
       )}
 
-      {host.temp_available && isVisible("temp") && (
-        <div className="card span4">
-          <div className="card-label">CPU Temp</div>
-          <div><span className="stat-big" style={{ color: host.cpu_temp > 85 ? "var(--bad)" : host.cpu_temp > 70 ? "var(--warn)" : "var(--good)" }}>{host.cpu_temp.toFixed(0)}</span><span className="stat-unit">°C</span></div>
-          <div className="stat-sub">package temperature</div>
-        </div>
-      )}
 
       {host.net_available && isVisible("network") && (
-        <div className="card span8">
+        <div className="card span4">
           <div className="card-label">Network · {host.net_interface}</div>
           <div className="net-row">
             <div className="net-fig"><span className="net-arrow" style={{ color: "var(--good)" }}>↓</span> {fmtRate(host.net_rx_bps)}<span className="net-lbl">rx</span></div>
@@ -326,6 +341,8 @@ function HostCards({ host, rxHist, txHist, gameMemHist, memThreshold, isVisible 
           <div style={{ marginTop: 10 }}><Sparkline data={rxHist.map((r, i) => r + (txHist[i] ?? 0))} color="var(--accent)" height={38} /></div>
         </div>
       )}
+
+      {isVisible("activity") && <ActivityCard />}
     </>
   );
 }
@@ -426,9 +443,9 @@ function formatUptime(sec: number): string {
 // full viewer with controls lives on Server Admin and Backups.
 function ActivityCard() {
   const { events } = useEventStream(120);
-  const recent = events.slice(-8);
+  const recent = events.slice(-12);
   return (
-    <div className="card span6">
+    <div className="card span12">
       <div className="card-label">Recent activity</div>
       {recent.length === 0 && <div className="act-empty">Nothing yet — activity appears as it happens.</div>}
       <div className="act-list">

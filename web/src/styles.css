@@ -434,3 +434,16 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .cpu-steal { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
 
 .perr { color: var(--bad); font-family: ui-monospace, monospace; font-size: 12px; }
+
+.info-tip { margin-left: 6px; cursor: help; opacity: 0.55; font-size: 11px; }
+.info-tip:hover { opacity: 1; }
+
+/* ---- nav update-available badge ---- */
+.nav-alert {
+  margin-left: auto; width: 16px; height: 16px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; line-height: 1;
+  color: #0b0f16; background: var(--warn);
+  box-shadow: 0 0 10px -1px var(--warn);
+}
+.span12 { grid-column: span 12; }

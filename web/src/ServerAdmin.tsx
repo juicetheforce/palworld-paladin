@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, HistoryEntry, UpdateCheckResponse, MemRestartConfig } from "./api";
+import { InfoLabel } from "./InfoLabel";
 import { useServerState } from "./useServerState";
 import { useEventStream } from "./useEventStream";
 import { LiveLog } from "./LiveLog";
@@ -184,18 +185,14 @@ export function ServerAdmin() {
 
         {/* Server update */}
         <div className="card span6">
-          <div className="card-label">Server update</div>
+          <InfoLabel label="Server update"
+            info="Checks Steam for a new server build. If one exists: warn players, save the world, stop, back up, update via SteamCMD, restart, and verify. If already up to date, nothing is touched." />
           <div className="upd-status">
             <div className="upd-current">
               <span className="upd-k">Current</span>
               <span className="upd-v">{version || "—"}{check?.local_buildid ? ` · build ${check.local_buildid}` : ""}</span>
             </div>
             <UpdateBadge check={check} onCheckNow={checkNow} />
-          </div>
-          <div className="upd-desc">
-            If a new build exists: warn players, save the world, stop, back
-            up, update via SteamCMD, restart, and verify. If already up to
-            date, nothing is touched.
           </div>
           <input className="admin-input" value={updWarn} onChange={(e) => setUpdWarn(e.target.value)}
             placeholder="Warning message (empty = no warning)" />
@@ -212,14 +209,11 @@ export function ServerAdmin() {
 
         {/* Memory auto-restart */}
         <div className="card span6">
-          <div className="card-label">Auto-restart on high memory</div>
-          <div className="upd-desc">
-            Palworld servers leak memory over time. When the game's memory
-            use crosses the threshold, Paladin saves the world and restarts
-            the server. Empty message and zero delay = immediate restart;
-            set them to warn players first.
-            {memNow !== null && <> Game is using <b>{(memNow / (1 << 30)).toFixed(1)} GB</b> right now.</>}
-          </div>
+          <InfoLabel label="Auto-restart on high memory"
+            info="Palworld servers leak memory over time. When the game's memory use crosses the threshold, Paladin saves the world and restarts the server. Empty message and zero delay = immediate restart; set them to warn players first." />
+          {memNow !== null && (
+            <div className="upd-desc">Game is using <b>{(memNow / (1 << 30)).toFixed(1)} GB</b> right now.</div>
+          )}
           <label className="admin-check" style={{ marginBottom: 12 }}>
             <input type="checkbox" checked={mem.enabled} onChange={(e) => editMem({ enabled: e.target.checked })} />
             Enable memory-threshold restart
