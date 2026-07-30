@@ -430,3 +430,5 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .gamemem-thr { color: var(--warn); }
 .gamemem-chart { position: relative; }
 .thr-line { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--warn); opacity: 0.8; pointer-events: none; }
+
+.cpu-steal { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
