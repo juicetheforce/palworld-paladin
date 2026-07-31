@@ -91,8 +91,9 @@ if command -v docker >/dev/null && docker ps --format '{{.Image}} {{.Names}}' 2>
   DOCKERIZED=1
 fi
 
-SRV_PID=$(pgrep -x PalServer-Linux-Shipping | head -1 || true)
-if [ -z "$SRV_PID" ]; then SRV_PID=$(pgrep -f 'PalServer-Linux-Shipping' | head -1 || true); fi
+# Note: pgrep -x is useless here (kernel comm names truncate at 15 chars);
+# match the full command line instead.
+SRV_PID=$(pgrep -f 'PalServer-Linux-Shipping' | head -1 || true)
 if [ -n "$SRV_PID" ]; then
   SRV_USER=$(ps -o user= -p "$SRV_PID" | tr -d ' ')
   exe=$(readlink -f "/proc/$SRV_PID/exe")               # …/Pal/Binaries/Linux/PalServer-Linux-Shipping
@@ -109,7 +110,10 @@ fi
 
 PORT_USER=$(ss -ltnpH "sport = :$WEB_PORT" 2>/dev/null | grep -oP 'users:\(\("\K[^"]+' | head -1 || true)
 RIVALS=$(systemctl list-units --type=service --all --no-legend 2>/dev/null \
-  | awk '{print $1}' | grep -Ei 'pst|palworld' | grep -Fv "$SERVER_UNIT" | grep -Fv "$PALADIN_UNIT" || true)
+  | awk '{print $1}' \
+  | grep -Ei '^(pst|palpanel|palworld-server-tool|palworld[-_]?admin|palworld-server-manager)\.service' \
+  | grep -Fv "$SERVER_UNIT" | grep -Fv "$PALADIN_UNIT" \
+  | { [ -n "$SRV_UNIT_EXISTING" ] && grep -Fv "$SRV_UNIT_EXISTING" || cat; } || true)
 
 echo
 say "---------- detection report ----------"
