@@ -136,22 +136,11 @@ func build(cfg AppConfig) (*deps, error) {
 	d.unit = supervise.NewScopedUnitController(cfg.serverUnit())
 
 	// Detect the world folder — never assume (§7.4 ethos).
-	des, err := os.ReadDir(cfg.savesRoot())
+	wd, err := detectWorldDir(cfg.savesRoot())
 	if err != nil {
-		return nil, fmt.Errorf("list %s: %w", cfg.savesRoot(), err)
+		return nil, err
 	}
-	var worlds []string
-	for _, de := range des {
-		// Skip dot-prefixed entries: these are Paladin's own scratch
-		// (e.g. .paladin-safety-* during/after a restore), never worlds.
-		if de.IsDir() && !strings.HasPrefix(de.Name(), ".") {
-			worlds = append(worlds, de.Name())
-		}
-	}
-	if len(worlds) != 1 {
-		return nil, fmt.Errorf("expected exactly one world under %s, found %v", defSavesRoot, worlds)
-	}
-	d.worldDir = filepath.Join(defSavesRoot, worlds[0])
+	d.worldDir = wd
 
 	d.fj, err = maintain.NewFileJournal(cfg.journalDir())
 	if err != nil {
@@ -1026,4 +1015,26 @@ func makeWorldFunc(d *deps) webserv.WorldFunc {
 		},
 	}
 	return cached.Get
+}
+
+// detectWorldDir finds the single world folder under the saves root.
+// (Regression note: this was once inlined and joined against the DEFAULT
+// root after scanning the CONFIGURED root — right GUID, wrong path, on
+// every adopted layout. Extracted so the root is used exactly once.)
+func detectWorldDir(root string) (string, error) {
+	des, err := os.ReadDir(root)
+	if err != nil {
+		return "", fmt.Errorf("list %s: %w", root, err)
+	}
+	var worlds []string
+	for _, de := range des {
+		// Skip dot-prefixed entries: Paladin's own scratch, never worlds.
+		if de.IsDir() && !strings.HasPrefix(de.Name(), ".") {
+			worlds = append(worlds, de.Name())
+		}
+	}
+	if len(worlds) != 1 {
+		return "", fmt.Errorf("expected exactly one world under %s, found %v", root, worlds)
+	}
+	return filepath.Join(root, worlds[0]), nil
 }

@@ -73,3 +73,16 @@ func TestAdminPasswordPrecedence(t *testing.T) {
 		t.Fatal("env precedence")
 	}
 }
+
+func TestDetectWorldDirUsesGivenRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "SaveGames", "0")
+	os.MkdirAll(filepath.Join(root, "ABC123"), 0o755)
+	os.MkdirAll(filepath.Join(root, ".paladin-safety-x"), 0o755)
+	wd, err := detectWorldDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wd != filepath.Join(root, "ABC123") {
+		t.Fatalf("world dir must live under the GIVEN root (the adopted-layout bug): %s", wd)
+	}
+}
