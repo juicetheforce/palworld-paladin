@@ -231,11 +231,8 @@ func TestPlayersRosterReservedFields(t *testing.T) {
 		t.Fatalf("bad roster: %+v", body)
 	}
 	p := body.Players[0]
-	if p.Level != 42 || p.Guild != nil || p.Bases != nil {
-		t.Fatalf("online tier should populate level; guild/bases reserved-null: %+v", p)
-	}
-	if body.HistoryTier {
-		t.Fatal("history tier must be false until save parsing exists")
+	if p.Level != 42 {
+		t.Fatalf("online tier should populate level: %+v", p)
 	}
 }
 

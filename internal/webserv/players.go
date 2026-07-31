@@ -32,15 +32,12 @@ type rosterPlayer struct {
 	Level  int     `json:"level"`
 	Ping   float64 `json:"ping"`
 	// Reserved for the save-parsing tier — always null/zero until then.
-	Guild *string `json:"guild"` // null → "—" placeholder in UI
-	Bases *int    `json:"bases"` // null → "—" placeholder in UI
 }
 
 type playersResponse struct {
-	Online      bool           `json:"online"`       // is the game server reachable
-	Players     []rosterPlayer `json:"players"`      // live roster (online tier)
-	HistoryTier bool           `json:"history_tier"` // false until save parsing exists
-	Error       string         `json:"error,omitempty"`
+	Online  bool           `json:"online"`  // is the game server reachable
+	Players []rosterPlayer `json:"players"` // live roster (online tier)
+	Error   string         `json:"error,omitempty"`
 }
 
 func (s *Server) handlePlayers(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +45,6 @@ func (s *Server) handlePlayers(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var resp playersResponse
-	resp.HistoryTier = false // no save parser yet (§6.5 historical tier deferred)
 
 	live, err := s.players.Players(ctx)
 	if err != nil {
@@ -63,7 +59,6 @@ func (s *Server) handlePlayers(w http.ResponseWriter, r *http.Request) {
 		resp.Players = append(resp.Players, rosterPlayer{
 			Name: p.Name, UserID: p.UserID, Online: true,
 			Level: p.Level, Ping: p.Ping,
-			Guild: nil, Bases: nil, // reserved
 		})
 	}
 	writeJSON(w, http.StatusOK, resp)

@@ -82,13 +82,13 @@ function AuthScreen({ mode, onDone }: { mode: "setup" | "login"; onDone: () => v
 
 type Section = "dashboard" | "players" | "map" | "settings" | "backups" | "console";
 
-const NAV: { id: Section; label: string; icon: string; ready?: boolean }[] = [
-  { id: "dashboard", label: "Dashboard", icon: "▮", ready: true },
-  { id: "players", label: "Players", icon: "◆", ready: true },
-  { id: "map", label: "World Map", icon: "◉", ready: true },
-  { id: "settings", label: "Server Settings", icon: "⚙", ready: true },
-  { id: "backups", label: "Backups", icon: "❒", ready: true },
-  { id: "console", label: "Server Admin", icon: "❯", ready: true },
+const NAV: { id: Section; label: string; icon: string }[] = [
+  { id: "dashboard", label: "Dashboard", icon: "▮" },
+  { id: "players", label: "Players", icon: "◆" },
+  { id: "map", label: "World Map", icon: "◉" },
+  { id: "settings", label: "Server Settings", icon: "⚙" },
+  { id: "backups", label: "Backups", icon: "❒" },
+  { id: "console", label: "Server Admin", icon: "❯" },
 ];
 
 function Shell({ onLogout }: { onLogout: () => void }) {
@@ -124,8 +124,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           <div
             key={n.id}
             className={"nav-item" + (section === n.id ? " active" : "")}
-            onClick={() => n.ready && setSection(n.id)}
-            style={n.ready ? undefined : { opacity: 0.5, cursor: "default" }}
+            onClick={() => setSection(n.id)}
           >
             <span className="ico">{n.icon}</span>
             {n.label}
@@ -135,7 +134,6 @@ function Shell({ onLogout }: { onLogout: () => void }) {
             {n.id === "console" && updAvail && (
               <span className="nav-alert" title="Server update available">!</span>
             )}
-            {!n.ready && <span className="soon">soon</span>}
           </div>
         ))}
         <div className="nav-spacer" />

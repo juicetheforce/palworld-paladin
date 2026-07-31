@@ -66,7 +66,6 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .nav-item:hover { background: var(--surface-2); color: var(--text); }
 .nav-item.active { background: var(--surface-2); color: var(--accent); border-color: var(--border-lit); }
 .nav-item .ico { width: 18px; text-align: center; opacity: 0.9; }
-.nav-item .soon { margin-left: auto; font-size: 9px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.5px; }
 .nav-spacer { flex: 1; }
 .nav-foot { padding: 10px 12px; font-size: 11px; color: var(--text-faint); }
 .nav-logout { color: var(--text-dim); font-size: 13px; padding: 10px 12px; cursor: pointer; border-radius: 9px; }
@@ -175,7 +174,6 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .ptable tbody tr:hover { background: var(--surface-2); }
 .pname { font-weight: 600; color: var(--text); }
 .pid { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-faint); margin-top: 2px; }
-.reserved { color: var(--text-faint); font-style: italic; }
 .pempty { color: var(--text-faint); text-align: center; padding: 28px !important; }
 .pdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
 .pdot.online { background: var(--good); box-shadow: 0 0 7px var(--good); }

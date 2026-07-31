@@ -548,8 +548,10 @@ func cmdServe(args []string) error {
 	sampler := hostmetrics.NewSampler(3 * time.Second)
 	go sampler.Run(context.Background())
 
-	// Live-event hub + log tailer (SSE foundation). Pal.log lives under
-	// Pal/Saved/Logs; from the saves root that's two dirs up, then Logs.
+	// Live-event hub + log tailer. NOTE (docs rev 17): the Linux shipping
+	// build writes no Pal.log even with -log — this tailer is deliberately
+	// dormant machinery that self-activates if a future build ever logs.
+	// Player events come from the roster differ, not from here.
 	hub := events.NewHub(512)
 	logPath := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(d.worldDir))), "Logs", "Pal.log")
 	go events.TailLog(context.Background(), hub, logPath)

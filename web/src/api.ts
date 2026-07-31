@@ -51,14 +51,11 @@ export interface RosterPlayer {
   online: boolean;
   level: number;
   ping: number;
-  guild: string | null; // reserved for save-parsing tier
-  bases: number | null;  // reserved for save-parsing tier
 }
 
 export interface PlayersResponse {
   online: boolean;
   players: RosterPlayer[];
-  history_tier: boolean; // false until save parsing exists
   error?: string;
 }
 
@@ -125,12 +122,6 @@ export interface WorldResponse {
   players?: SavPlayer[]; guilds?: SavGuild[];
 }
 
-export interface HistoryEntry {
-  time: string;
-  action: string;
-  detail: string;
-  ok: boolean;
-}
 
 async function j<T>(r: Response): Promise<T> {
   if (!r.ok) {
@@ -196,7 +187,6 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, broadcast, delay_seconds }),
     }).then(j<{ accepted: boolean }>),
-  history: () => fetch("/api/admin/history").then(j<{ history: HistoryEntry[] }>),
   settings: () => fetch("/api/admin/settings").then(j<{ keys: SettingsKey[]; values: Record<string, string> }>),
   commitSettings: (changes: Record<string, string>, broadcast = "", delay_seconds = 0) =>
     fetch("/api/admin/settings/commit", {
