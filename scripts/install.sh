@@ -17,6 +17,7 @@
 #   2. Existing server, nothing managing  -> adopt (detect user/paths, author unit)
 #   3. Existing server + rival supervisor -> stop/disable theirs (with consent), adopt
 set -euo pipefail
+trap 'echo "[paladin] FATAL: command failed at line $LINENO (rerunning the installer is safe)" >&2' ERR
 
 REPO="juicetheforce/palworld-paladin"
 PALWORLD_APP_ID=2394010
@@ -46,6 +47,11 @@ c_grn=$'\033[32m'; c_ylw=$'\033[33m'; c_red=$'\033[31m'; c_off=$'\033[0m'
 say()  { echo "${c_grn}[paladin]${c_off} $*"; }
 warn() { echo "${c_ylw}[paladin]${c_off} $*"; }
 die()  { echo "${c_red}[paladin] ERROR:${c_off} $*" >&2; exit 1; }
+
+# Random password, SIGPIPE-safe: a finite read from urandom FIRST, then
+# filter. (tr reading urandom directly into head dies of SIGPIPE under
+# pipefail — the classic.)
+gen_pw() { head -c 512 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 20; }
 
 # Interactive prompts must read the terminal, not stdin (we may be piped).
 ask() { # ask "Question" -> sets $REPLY_ANS to y/n
@@ -273,7 +279,7 @@ fresh_install() {
 
   # First-boot config: run once briefly? No — author the ini directly.
   local ini_dir="$INSTALL_DIR/Pal/Saved/Config/LinuxServer"
-  ADMIN_PW=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 20)
+  ADMIN_PW=$(gen_pw)
   sudo -u "$SVC_USER" mkdir -p "$ini_dir"
   cat > "$ini_dir/PalWorldSettings.ini" <<INI
 [/Script/Pal.PalGameWorldSettings]
@@ -311,7 +317,7 @@ adopt_install() {
     warn "REST API is not fully configured in the ini (enabled='$rest_on', password $( [ -n "$ADMIN_PW" ] && echo set || echo missing ))."
     ask "Enable the REST API (and set an admin password if missing) in PalWorldSettings.ini? The server restarts as part of adoption anyway."
     [ "$REPLY_ANS" = y ] || die "Paladin requires the REST API. Aborting without changes."
-    [ -n "$ADMIN_PW" ] || ADMIN_PW=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 20)
+    [ -n "$ADMIN_PW" ] || ADMIN_PW=$(gen_pw)
     cp -a "$ini" "$ini.paladin-pre-adopt"
     python3 - "$ini" "$ADMIN_PW" <<'PY'
 import re, sys
