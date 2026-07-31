@@ -365,6 +365,15 @@ PY
     fi
   fi
 
+  # Guarantee updates work post-adopt: whatever the old manager used for
+  # steamcmd, make sure one exists where Paladin's update runner looks.
+  if [ ! -x "$SRV_HOME/steamcmd/steamcmd.sh" ] && ! command -v steamcmd >/dev/null; then
+    say "Installing SteamCMD for the server-update feature…"
+    sudo -u "$SVC_USER" mkdir -p "$SRV_HOME/steamcmd"
+    curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz \
+      | sudo -u "$SVC_USER" tar -xz -C "$SRV_HOME/steamcmd"
+  fi
+
   write_server_unit "$SVC_USER" "$INSTALL_DIR"
   systemctl daemon-reload && systemctl enable --now "$SERVER_UNIT"
   say "Server restarted under Paladin's systemd unit."
