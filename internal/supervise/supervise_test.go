@@ -300,3 +300,23 @@ func TestSetMemThresholdAtRuntime(t *testing.T) {
 		t.Fatal("zero threshold must disable the watcher")
 	}
 }
+
+func TestShowUsesOnlyGrantCoveredArguments(t *testing.T) {
+	// The scoped sudoers grant permits exact invocations: `show <unit>`
+	// bare. Any flag added here silently breaks every installed box (the
+	// v0.1.4 live incident: --property denials made stopped servers "time
+	// out" and blinded the memory guard). This test pins the contract.
+	fr := &fakeRunner{show: func(int) string {
+		return "ActiveState=active\nSubState=running\nMainPID=42\nMemoryCurrent=1024\n"
+	}}
+	u := &UnitController{Unit: "palserver.service", Runner: fr}
+	if _, err := u.Show(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(fr.calls) != 1 {
+		t.Fatalf("one call expected: %v", fr.calls)
+	}
+	if fr.calls[0] != "systemctl show palserver.service" {
+		t.Fatalf("Show must pass ONLY grant-covered args (bare 'show <unit>'), got: %q", fr.calls[0])
+	}
+}

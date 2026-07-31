@@ -113,8 +113,13 @@ type Props struct {
 
 // Show reads the unit's current properties.
 func (u *UnitController) Show(ctx context.Context) (*Props, error) {
-	out, err := u.systemctl(ctx, "show", u.Unit,
-		"--property=ActiveState,SubState,MainPID,MemoryCurrent")
+	// Deliberately NO --property flag: sudoers matches arguments exactly,
+	// and the scoped grant permits `show <unit>` bare. The flagged form was
+	// silently denied on installer-provisioned boxes — every Show() failed,
+	// so a stopped server "timed out" its stop-wait and the memory guard
+	// read nothing. Parsing the full output costs a few KB and needs no
+	// grant beyond what every install already has.
+	out, err := u.systemctl(ctx, "show", u.Unit)
 	if err != nil {
 		return nil, err
 	}
