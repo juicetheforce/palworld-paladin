@@ -93,8 +93,11 @@ fi
 say "Detecting the current state of this machine…"
 
 DOCKERIZED=0; SRV_PID=""; SRV_USER=""; SRV_HOME=""; INSTALL_DIR=""; SRV_UNIT_EXISTING=""; SRV_LAUNCH=""; SRV_PPID=""; SRV_PARENT_SUPERVISOR=""; SRV_PARENT_DESC=""
-if command -v docker >/dev/null && docker ps --format '{{.Image}} {{.Names}}' 2>/dev/null | grep -qi palworld; then
-  DOCKERIZED=1
+if command -v docker >/dev/null; then
+  # grep reads all input (no -q) so docker never dies of SIGPIPE under pipefail.
+  if [ -n "$(docker ps --format '{{.Image}} {{.Names}}' 2>/dev/null | grep -i palworld || true)" ]; then
+    DOCKERIZED=1
+  fi
 fi
 
 # Note: pgrep -x is useless here (kernel comm names truncate at 15 chars);

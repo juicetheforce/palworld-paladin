@@ -50,10 +50,11 @@ ask "Proceed?"
 [ "$REPLY_ANS" = y ] || { say "Aborted. Nothing was changed."; exit 0; }
 
 # ---- Paladin itself ----
-if systemctl list-unit-files --no-legend 2>/dev/null | grep -q "^$PALADIN_UNIT"; then
-  systemctl disable --now "$PALADIN_UNIT" 2>/dev/null || true
-  rm -f "/etc/systemd/system/$PALADIN_UNIT"
-fi
+# No existence guard: disable/rm of an absent unit is harmless, and the
+# guard we had (list-unit-files | grep -q) died of SIGPIPE under pipefail
+# and silently skipped removal. Unconditional and idempotent wins.
+systemctl disable --now "$PALADIN_UNIT" 2>/dev/null || true
+rm -f "/etc/systemd/system/$PALADIN_UNIT"
 rm -f "$BIN" "$SUDOERS"
 rm -rf "$CONF_DIR"
 # The sidecar was fetched by the installer; it goes too (NOTICE included).
@@ -63,15 +64,11 @@ say "Paladin removed."
 
 # ---- optionally, the server's supervision ----
 if [ "$EVERYTHING" = 1 ]; then
-  if systemctl list-unit-files --no-legend 2>/dev/null | grep -q "^$SERVER_UNIT"; then
-    warn "Stopping and removing $SERVER_UNIT (players will be disconnected)…"
-    systemctl disable --now "$SERVER_UNIT" 2>/dev/null || true
-    rm -f "/etc/systemd/system/$SERVER_UNIT"
-    systemctl daemon-reload
-    say "Server supervision removed. Server files are untouched."
-  else
-    warn "$SERVER_UNIT not present; nothing to remove."
-  fi
+  warn "Stopping and removing $SERVER_UNIT (players will be disconnected)…"
+  systemctl disable --now "$SERVER_UNIT" 2>/dev/null || true
+  rm -f "/etc/systemd/system/$SERVER_UNIT"
+  systemctl daemon-reload
+  say "Server supervision removed. Server files are untouched."
 
   if [ -n "$INSTALL_DIR" ] && [ -d "$INSTALL_DIR" ]; then
     echo
