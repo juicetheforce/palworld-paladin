@@ -345,6 +345,13 @@ PY
   if [ -n "$SRV_UNIT_EXISTING" ]; then
     say "Stopping and disabling existing unit $SRV_UNIT_EXISTING…"
     systemctl disable --now "$SRV_UNIT_EXISTING"
+    # Remove the superseded unit file so nothing can hand-start the old
+    # launcher later (consent to replace it was given above).
+    if [ "$SRV_UNIT_EXISTING" != "$SERVER_UNIT" ] && [ -f "/etc/systemd/system/$SRV_UNIT_EXISTING" ]; then
+      rm -f "/etc/systemd/system/$SRV_UNIT_EXISTING"
+      systemctl daemon-reload
+      say "Removed superseded unit file $SRV_UNIT_EXISTING."
+    fi
   elif [ -n "$SRV_PID" ]; then
     if [ -n "$SRV_PARENT_SUPERVISOR" ]; then
       ask "Stop the managing process '$SRV_LAUNCH' (pid $SRV_PARENT_SUPERVISOR)? It relaunches the server if only the server is killed, so it must go first."
