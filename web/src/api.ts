@@ -10,6 +10,7 @@ export interface StatusResponse {
   frame_time_ms: number;
   players: number;
   max_players: number;
+  paladin_version?: string;
   in_game_time?: string;
   in_game_days?: number;
   bases: number;

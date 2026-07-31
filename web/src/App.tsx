@@ -94,7 +94,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
 function Shell({ onLogout }: { onLogout: () => void }) {
   const [section, setSection] = useState<Section>("dashboard");
   const logout = async () => { await api.logout(); onLogout(); };
-  const { online, players } = useServerState(10000);
+  const { online, players, paladinVersion } = useServerState(10000);
   const [updAvail, setUpdAvail] = useState(false);
 
   // Update-availability for the nav badge: consulted on app load and every
@@ -138,7 +138,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         ))}
         <div className="nav-spacer" />
         <div className="nav-logout" onClick={logout}>Sign out</div>
-        <div className="nav-foot">Paladin v0.1 · trial</div>
+        <div className="nav-foot">Paladin {paladinVersion || "…"}</div>
       </nav>
       <main className="main">
         {section === "dashboard" ? <Dashboard /> : section === "players" ? <Players /> : section === "console" ? <ServerAdmin /> : section === "backups" ? <Backups /> : section === "settings" ? <Settings /> : section === "map" ? <WorldMap /> : <ComingSoon section={section} />}

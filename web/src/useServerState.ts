@@ -9,13 +9,14 @@ export function useServerState(intervalMs = 5000) {
   const [online, setOnline] = useState<boolean | null>(null); // null = not yet known
   const [version, setVersion] = useState("");
   const [players, setPlayers] = useState<number | null>(null);
+  const [paladinVersion, setPaladinVersion] = useState("");
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
     let alive = true;
     const tick = () => {
       api.status()
-        .then((s) => { if (alive) { setOnline(s.online); setVersion(s.version || ""); setPlayers(s.players ?? null); setChecking(false); } })
+        .then((s) => { if (alive) { setOnline(s.online); setVersion(s.version || ""); setPlayers(s.players ?? null); setPaladinVersion(s.paladin_version ?? ""); setChecking(false); } })
         .catch(() => { if (alive) { setOnline(false); setChecking(false); } });
     };
     tick();
@@ -23,5 +24,5 @@ export function useServerState(intervalMs = 5000) {
     return () => { alive = false; clearInterval(id); };
   }, [intervalMs]);
 
-  return { online, version, players, checking };
+  return { online, version, players, paladinVersion, checking };
 }

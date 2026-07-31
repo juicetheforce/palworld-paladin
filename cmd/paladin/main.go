@@ -697,13 +697,14 @@ func cmdServe(args []string) error {
 			}
 			return p.MemoryCurrent, nil
 		},
-		LogTail:      func(n int) ([]string, error) { return events.TailFile(logPath, n) },
-		GameTime:     cachedGameTime(d, 20*time.Second),
-		Actors:       d.api.Actors,
-		MapImagePath: cfg.worldMapFile(),
-		World:        makeWorldFunc(d),
-		Hub:          hub,
-		Static:       webserv.Assets(),
+		LogTail:        func(n int) ([]string, error) { return events.TailFile(logPath, n) },
+		GameTime:       cachedGameTime(d, 20*time.Second),
+		PaladinVersion: version,
+		Actors:         d.api.Actors,
+		MapImagePath:   cfg.worldMapFile(),
+		World:          makeWorldFunc(d),
+		Hub:            hub,
+		Static:         webserv.Assets(),
 	})
 	recordAction = srv.RecordAction
 	if auth.NeedsSetup() {

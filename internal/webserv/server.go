@@ -63,6 +63,7 @@ type Server struct {
 	commitBusy     atomic.Bool
 	logTail        func(n int) ([]string, error)
 	gameTime       func(ctx context.Context) (string, int, bool)
+	paladinVersion string
 	actors         ActorsFunc
 	mapImagePath   string
 	world          WorldFunc
@@ -98,6 +99,7 @@ type Config struct {
 	Commit         CommitRunner
 	LogTail        func(n int) ([]string, error)
 	GameTime       func(ctx context.Context) (string, int, bool)
+	PaladinVersion string
 	Actors         ActorsFunc
 	MapImagePath   string
 	World          WorldFunc
@@ -118,7 +120,8 @@ func New(cfg Config) *Server {
 		keyList: cfg.KeyList, settingsValues: cfg.SettingsValues, commit: cfg.Commit,
 		logTail: cfg.LogTail, gameTime: cfg.GameTime,
 		actors: cfg.Actors, mapImagePath: cfg.MapImagePath, world: cfg.World,
-		actions: newActionLog(100), hub: cfg.Hub, static: cfg.Static, mux: http.NewServeMux(),
+		paladinVersion: cfg.PaladinVersion,
+		actions:        newActionLog(100), hub: cfg.Hub, static: cfg.Static, mux: http.NewServeMux(),
 	}
 	s.routes()
 	return s
@@ -284,23 +287,24 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 
 // StatusResponse is the dashboard payload (read-only; §6.5 live tier).
 type StatusResponse struct {
-	InGameTime  string  `json:"in_game_time,omitempty"`
-	InGameDays  int     `json:"in_game_days,omitempty"`
-	ServerName  string  `json:"server_name"`
-	Description string  `json:"description"`
-	Version     string  `json:"version"`
-	WorldGUID   string  `json:"world_guid"`
-	Online      bool    `json:"online"`
-	FPS         float64 `json:"fps"`
-	FPSAverage  float64 `json:"fps_average"`
-	FrameTime   float64 `json:"frame_time_ms"`
-	Players     int     `json:"players"`
-	MaxPlayers  int     `json:"max_players"`
-	Bases       int     `json:"bases"`
-	Days        int     `json:"days"`
-	UptimeSec   int     `json:"uptime_sec"`
-	BackupCount int     `json:"backup_count"`
-	Error       string  `json:"error,omitempty"`
+	PaladinVersion string  `json:"paladin_version,omitempty"`
+	InGameTime     string  `json:"in_game_time,omitempty"`
+	InGameDays     int     `json:"in_game_days,omitempty"`
+	ServerName     string  `json:"server_name"`
+	Description    string  `json:"description"`
+	Version        string  `json:"version"`
+	WorldGUID      string  `json:"world_guid"`
+	Online         bool    `json:"online"`
+	FPS            float64 `json:"fps"`
+	FPSAverage     float64 `json:"fps_average"`
+	FrameTime      float64 `json:"frame_time_ms"`
+	Players        int     `json:"players"`
+	MaxPlayers     int     `json:"max_players"`
+	Bases          int     `json:"bases"`
+	Days           int     `json:"days"`
+	UptimeSec      int     `json:"uptime_sec"`
+	BackupCount    int     `json:"backup_count"`
+	Error          string  `json:"error,omitempty"`
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -321,6 +325,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	resp.ServerName, resp.Description = info.ServerName, info.Description
 	resp.Version, resp.WorldGUID = info.Version, info.WorldGUID
 
+	resp.PaladinVersion = s.paladinVersion
 	if s.gameTime != nil {
 		if t, days, ok := s.gameTime(ctx); ok {
 			resp.InGameTime, resp.InGameDays = t, days
