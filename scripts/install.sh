@@ -92,7 +92,7 @@ fi
 # ---------- detection engine ----------
 say "Detecting the current state of this machine…"
 
-DOCKERIZED=0; SRV_PID=""; SRV_USER=""; SRV_HOME=""; INSTALL_DIR=""; SRV_UNIT_EXISTING=""; SRV_LAUNCH=""
+DOCKERIZED=0; SRV_PID=""; SRV_USER=""; SRV_HOME=""; INSTALL_DIR=""; SRV_UNIT_EXISTING=""; SRV_LAUNCH=""; SRV_PPID=""; SRV_PARENT_SUPERVISOR=""; SRV_PARENT_DESC=""
 if command -v docker >/dev/null && docker ps --format '{{.Image}} {{.Names}}' 2>/dev/null | grep -qi palworld; then
   DOCKERIZED=1
 fi
@@ -108,9 +108,15 @@ if [ -n "$SRV_PID" ]; then
   SRV_UNIT_EXISTING=$(ps -o unit= -p "$SRV_PID" | tr -d ' ')
   case "$SRV_UNIT_EXISTING" in ""|-|user*.slice|session*.scope) SRV_UNIT_EXISTING="" ;; esac
   if [ -z "$SRV_UNIT_EXISTING" ]; then
-    ppid=$(ps -o ppid= -p "$SRV_PID" | tr -d ' ')
-    pcomm=$(ps -o comm= -p "$ppid" 2>/dev/null | tr -d ' ' || true)
-    SRV_LAUNCH="${pcomm:-unknown}"   # screen / tmux / bash / sh …
+    SRV_PPID=$(ps -o ppid= -p "$SRV_PID" | tr -d ' ')
+    pcomm=$(ps -o comm= -p "$SRV_PPID" 2>/dev/null | tr -d ' ' || true)
+    pargs=$(ps -o args= -p "$SRV_PPID" 2>/dev/null || true)
+    SRV_LAUNCH="${pcomm:-unknown}"   # screen / tmux / bash / palworld-admin …
+    # Known process-supervisors relaunch the server if only the child dies.
+    if echo "$pargs $pcomm" | grep -qiE 'palworld[-_]?admin|palworld[-_]?server[-_]?manager|pst([^a-z]|$)'; then
+      SRV_PARENT_SUPERVISOR="$SRV_PPID"
+      SRV_PARENT_DESC="$pcomm ($pargs)"
+    fi
   fi
 fi
 
@@ -128,6 +134,7 @@ if [ -n "$SRV_PID" ]; then
   say "Palworld server RUNNING  pid=$SRV_PID user=$SRV_USER"
   say "  install dir: $INSTALL_DIR"
   if [ -n "$SRV_UNIT_EXISTING" ]; then say "  supervised by systemd unit: $SRV_UNIT_EXISTING"
+  elif [ -n "$SRV_PARENT_SUPERVISOR" ]; then warn "  supervised by a PROCESS manager: $SRV_PARENT_DESC (pid $SRV_PARENT_SUPERVISOR) — it will be stopped during adoption"
   else warn "  not systemd-managed (launch parent: ${SRV_LAUNCH:-unknown})"; fi
 else
   say "No running Palworld server found -> fresh-install scenario."
@@ -339,10 +346,23 @@ PY
     say "Stopping and disabling existing unit $SRV_UNIT_EXISTING…"
     systemctl disable --now "$SRV_UNIT_EXISTING"
   elif [ -n "$SRV_PID" ]; then
-    warn "Stopping the non-systemd server process (players will be disconnected)…"
-    kill "$SRV_PID" || true
+    if [ -n "$SRV_PARENT_SUPERVISOR" ]; then
+      ask "Stop the managing process '$SRV_LAUNCH' (pid $SRV_PARENT_SUPERVISOR)? It relaunches the server if only the server is killed, so it must go first."
+      [ "$REPLY_ANS" = y ] || die "Cannot adopt while another manager supervises the server. Aborting without changes."
+      kill "$SRV_PARENT_SUPERVISOR" || true
+      for i in $(seq 1 15); do kill -0 "$SRV_PARENT_SUPERVISOR" 2>/dev/null || break; sleep 1; done
+      kill -0 "$SRV_PARENT_SUPERVISOR" 2>/dev/null && { warn "manager still alive; SIGKILL"; kill -9 "$SRV_PARENT_SUPERVISOR" || true; sleep 1; }
+    fi
+    warn "Stopping the server process (players will be disconnected)…"
+    kill "$SRV_PID" 2>/dev/null || true
     for i in $(seq 1 30); do kill -0 "$SRV_PID" 2>/dev/null || break; sleep 1; done
     kill -0 "$SRV_PID" 2>/dev/null && { warn "still alive; SIGKILL"; kill -9 "$SRV_PID" || true; sleep 2; }
+    # Fight detector: if something respawned the server, a manager we did
+    # not identify is still alive — stop rather than wrestle it.
+    sleep 3
+    if pgrep -f 'PalServer-Linux-Shipping' >/dev/null; then
+      die "The server was restarted by something we did not stop (pid $(pgrep -f 'PalServer-Linux-Shipping' | head -1)). Identify and stop the remaining manager, then rerun."
+    fi
   fi
 
   write_server_unit "$SVC_USER" "$INSTALL_DIR"
