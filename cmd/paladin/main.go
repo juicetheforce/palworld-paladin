@@ -44,7 +44,8 @@ import (
 	"github.com/juicetheforce/palworld-paladin/internal/webserv"
 )
 
-var version = "0.1.0-trial"
+// version is stamped by release builds via -ldflags "-X main.version=vX.Y.Z".
+var version = "dev"
 
 // defaults matching deploy/testbox/bootstrap-palworld-testbox.sh
 const (
