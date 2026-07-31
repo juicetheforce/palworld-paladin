@@ -72,8 +72,9 @@ func ParseINI(content string) (*INI, error) {
 		ini.index[k] = len(ini.pairs)
 		ini.pairs = append(ini.pairs, pair{key: k, raw: v})
 	}
-	if unbalanced(body) {
-		return nil, fmt.Errorf("settings: unbalanced quotes or parentheses in OptionSettings")
+	if pos, bad := unbalancedAt(body); bad {
+		return nil, fmt.Errorf("settings: unbalanced quotes or parentheses in OptionSettings near character %d: …%s…",
+			pos, truncate(contextAt(body, pos), 60))
 	}
 	return ini, nil
 }
@@ -85,9 +86,16 @@ func ParseINI(content string) (*INI, error) {
 func splitTuple(body string) []string {
 	var out []string
 	var buf strings.Builder
-	depth, inQ := 0, false
+	depth, inQ, esc := 0, false, false
 	for _, ch := range body {
+		if esc { // previous char was a backslash inside quotes: literal char
+			esc = false
+			buf.WriteRune(ch)
+			continue
+		}
 		switch {
+		case inQ && ch == '\\':
+			esc = true
 		case ch == '"':
 			inQ = !inQ
 		case !inQ && ch == '(':
@@ -107,23 +115,52 @@ func splitTuple(body string) []string {
 	return out
 }
 
-func unbalanced(body string) bool {
-	depth, inQ := 0, false
-	for _, ch := range body {
+func unbalancedAt(body string) (int, bool) {
+	depth, inQ, esc := 0, false, false
+	lastEvent := 0
+	for i, ch := range body {
+		if esc {
+			esc = false
+			continue
+		}
 		switch ch {
+		case '\\':
+			if inQ {
+				esc = true
+			}
 		case '"':
 			inQ = !inQ
+			lastEvent = i
 		case '(':
 			if !inQ {
 				depth++
+				lastEvent = i
 			}
 		case ')':
 			if !inQ {
 				depth--
+				lastEvent = i
+				if depth < 0 {
+					return i, true // a close with no open: name the exact spot
+				}
 			}
 		}
 	}
-	return inQ || depth != 0
+	if inQ || depth != 0 {
+		return lastEvent, true
+	}
+	return 0, false
+}
+
+func contextAt(s string, pos int) string {
+	lo, hi := pos-25, pos+25
+	if lo < 0 {
+		lo = 0
+	}
+	if hi > len(s) {
+		hi = len(s)
+	}
+	return s[lo:hi]
 }
 
 // Get returns the raw value for key (exact case), if present.
