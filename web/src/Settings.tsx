@@ -39,11 +39,13 @@ export function Settings() {
   const { online } = useServerState();
   const { events, connected, clear } = useEventStream();
 
+  const [loadErr, setLoadErr] = useState("");
   const load = useCallback(() => {
     api.settings().then((r) => {
       setKeys(r.keys ?? []);
       setValues(r.values ?? {});
-    }).catch(() => {});
+      setLoadErr("");
+    }).catch((e: Error) => setLoadErr(e.message || "settings load failed"));
   }, []);
   useEffect(load, [load]);
 
@@ -107,7 +109,7 @@ export function Settings() {
     <>
       <div className="page-head">
         <div>
-          <div className="page-title">Settings</div>
+          <div className="page-title">Server Settings</div>
           <div className="page-sub">Staged changes apply together in one restart — nothing is live until you hit Apply</div>
         </div>
         {note && <span className="admin-note">{note}</span>}
@@ -128,7 +130,12 @@ export function Settings() {
         </aside>
 
         <div className="set-main card" style={{ padding: 0 }}>
-          {shown.length === 0 && <div className="pempty">No settings match.</div>}
+          {loadErr && (
+            <div className="pempty" style={{ color: "var(--bad)" }}>
+              Could not load settings: {loadErr}
+            </div>
+          )}
+          {!loadErr && shown.length === 0 && <div className="pempty">No settings match.</div>}
           {shown.map((k) => {
             const isStaged = k.key in staged;
             const val = isStaged ? staged[k.key] : current(k);
