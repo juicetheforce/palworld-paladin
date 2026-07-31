@@ -79,3 +79,16 @@ func TestLocalBuildIDReadsManifest(t *testing.T) {
 		t.Fatal("missing manifest must error")
 	}
 }
+
+func TestLocalBuildIDSteamappsCommonLayout(t *testing.T) {
+	// installDir is .../steamapps/common/PalServer; manifest two levels up.
+	root := t.TempDir()
+	install := filepath.Join(root, "steamapps", "common", "PalServer")
+	os.MkdirAll(install, 0o755)
+	os.WriteFile(filepath.Join(root, "steamapps", "appmanifest_2394010.acf"),
+		[]byte(`"AppState" { "buildid" "1234567" }`), 0o644)
+	id, err := LocalBuildID(install, "2394010")
+	if err != nil || id != "1234567" {
+		t.Fatalf("steamapps/common layout must resolve: id=%q err=%v", id, err)
+	}
+}

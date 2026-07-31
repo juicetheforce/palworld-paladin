@@ -52,12 +52,24 @@ var buildidRe = regexp.MustCompile(`"buildid"\s*"(\d+)"`)
 // install dir (steamapps/appmanifest_<app>.acf). This is the ground truth
 // for "what version is on disk" and needs no network or steamcmd run.
 func LocalBuildID(installDir, appID string) (string, error) {
-	manifest := filepath.Join(installDir, "steamapps", "appmanifest_"+appID+".acf")
-	b, err := os.ReadFile(manifest)
-	if err != nil {
-		return "", fmt.Errorf("steam: read manifest: %w", err)
+	// Two layouts exist in the wild:
+	//  - force_install_dir installs: <installDir>/steamapps/appmanifest_*.acf
+	//  - steamapps/common installs (installDir IS .../steamapps/common/<App>):
+	//    the manifest lives two levels up, at .../steamapps/appmanifest_*.acf
+	name := "appmanifest_" + appID + ".acf"
+	cands := []string{
+		filepath.Join(installDir, "steamapps", name),
+		filepath.Clean(filepath.Join(installDir, "..", "..", name)),
 	}
-	return parseManifestBuildID(string(b))
+	var lastErr error
+	for _, m := range cands {
+		b, err := os.ReadFile(m)
+		if err == nil {
+			return parseManifestBuildID(string(b))
+		}
+		lastErr = err
+	}
+	return "", fmt.Errorf("steam: no app manifest found (tried %s and %s): %w", cands[0], cands[1], lastErr)
 }
 
 func parseManifestBuildID(acf string) (string, error) {
