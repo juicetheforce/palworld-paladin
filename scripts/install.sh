@@ -256,8 +256,20 @@ fresh_install() {
     | sudo -u "$SVC_USER" tar -xz -C "$SRV_HOME/steamcmd"
 
   say "Installing the Palworld dedicated server (app $PALWORLD_APP_ID) — this downloads several GB…"
-  sudo -u "$SVC_USER" "$SRV_HOME/steamcmd/steamcmd.sh" +force_install_dir "$INSTALL_DIR" \
-    +login anonymous +app_update "$PALWORLD_APP_ID" validate +quit
+  # SteamCMD's first run after self-bootstrap notoriously fails with
+  # "Missing configuration"; a retry succeeds. It can also exit 0 on
+  # failure, so success is judged by the server actually existing.
+  installed=0
+  for attempt in 1 2 3; do
+    if sudo -u "$SVC_USER" "$SRV_HOME/steamcmd/steamcmd.sh" +force_install_dir "$INSTALL_DIR" \
+        +login anonymous +app_update "$PALWORLD_APP_ID" validate +quit \
+        && [ -x "$INSTALL_DIR/PalServer.sh" ]; then
+      installed=1; break
+    fi
+    warn "SteamCMD attempt $attempt did not produce a server (its first run often fails) — retrying…"
+    sleep 3
+  done
+  [ "$installed" = 1 ] || die "SteamCMD could not install the server after 3 attempts. This installer is safe to rerun — check network/disk and run it again."
 
   # First-boot config: run once briefly? No — author the ini directly.
   local ini_dir="$INSTALL_DIR/Pal/Saved/Config/LinuxServer"
