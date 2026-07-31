@@ -617,7 +617,17 @@ func cmdServe(args []string) error {
 	// is now live, not a noop.
 	serveEngine, err := maintain.NewEngine(maintain.Config{
 		API: d.api, Unit: d.unit, Susp: sup, Journal: d.fj,
-		OnEvent:   bridgeEngineEvents(hub),
+		OnEvent: bridgeEngineEvents(hub),
+		// Web cycles are headless: nobody can answer an escalation dialog.
+		// Policy: auto-escalate to force-kill — the world was saved at the
+		// SAVE step seconds earlier, so the kill is lossless, and it beats
+		// aborting mid-maintenance (the v0.1.2 live-box incident: 90s
+		// grace missed on a real world → silent auto-cancel → half-done
+		// cycle with the server down).
+		StopDecider: func(ctx context.Context) (maintain.StopDecision, error) {
+			hub.Error("stop", "Graceful stop timed out; world is saved — force-stopping the server to continue the cycle")
+			return maintain.DecisionForceKill, nil
+		},
 		DiskCheck: backup.DiskCheckFunc(d.worldDir, 2.0),
 		UnitActive: func(ctx context.Context) (bool, error) {
 			pr, err := d.unit.Show(ctx)
@@ -953,7 +963,7 @@ func makeCommitRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.Co
 		}
 
 		cycleID := fmt.Sprintf("commit-%d", time.Now().Unix())
-		out, _ := eng.RunCycle(context.Background(), cycleID, p, maintain.RunOpts{Announcements: ann})
+		out, _ := eng.RunCycle(context.Background(), cycleID, p, maintain.RunOpts{Announcements: ann, TolerateStopped: true})
 
 		switch out.Status {
 		case maintain.StatusSuccess:
