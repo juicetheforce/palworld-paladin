@@ -455,3 +455,43 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .hstat-v { font-size: 26px; font-weight: 720; line-height: 1.1; color: var(--text); }
 .hstat-u { font-size: 13px; color: var(--text-dim); margin-left: 4px; font-weight: 500; }
 .hstat-l { font-size: 10px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-dim); margin-top: 3px; }
+
+/* ==== mobile pass 1 (≤860px): reflow, don't cram ==== */
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; }
+
+  /* Sidebar becomes a sticky top strip; items scroll horizontally. */
+  .nav {
+    flex-direction: row; align-items: center; gap: 2px;
+    padding: 8px 10px; overflow-x: auto;
+    position: sticky; top: 0; z-index: 50;
+    border-right: none; border-bottom: 1px solid var(--border);
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-logo { font-size: 15px; padding: 4px 8px; white-space: nowrap; }
+  .nav-item { white-space: nowrap; padding: 8px 10px; font-size: 13px; }
+  .nav-item .ico { margin-right: 5px; }
+  .nav-count, .nav-alert { margin-left: 6px; }
+  .nav-foot { display: none; }           /* version lives on desktop; space is precious here */
+  .nav-spacer { display: none; }
+
+  /* Cards: everything full-width, gentler padding. */
+  .main { padding: 14px 12px; }
+  .span4, .span6, .span8, .span12 { grid-column: span 12; }
+  .grid { gap: 12px; }
+
+  /* Hero stacks: dial above stats. */
+  .card.hero { flex-direction: column; gap: 14px; }
+  .hero-stats { gap: 24px; justify-content: center; }
+
+  /* Tables scroll inside their card instead of crushing columns. */
+  .card { overflow-x: auto; }
+  .ptable { min-width: 620px; }
+
+  /* Map: full-bleed square is fine; legend shrinks. */
+  .map-legend { font-size: 10px; gap: 10px; padding: 5px 9px; }
+  .map-hint { display: none; }           /* wheel/drag hints are desktop-speak */
+
+  .page-head { flex-wrap: wrap; gap: 8px; }
+}
