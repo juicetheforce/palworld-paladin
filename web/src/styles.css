@@ -513,3 +513,13 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 @media (min-width: 861px) {
   .mobile-bar, .nav-backdrop { display: none; }
 }
+
+/* Ultra-narrow screens (fold cover displays, ~340px): shrink the big stat
+   typography so values like "123.4 KB/s" fit instead of clipping. */
+@media (max-width: 420px) {
+  .stat-big { font-size: 26px; }
+  .stat-unit { font-size: 12px; }
+  .hstat-v { font-size: 21px; }
+  .hero-stats { gap: 16px; }
+  .main { padding: 12px 8px; }
+}
