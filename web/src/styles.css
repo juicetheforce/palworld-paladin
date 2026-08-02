@@ -460,21 +460,34 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 @media (max-width: 860px) {
   .shell { grid-template-columns: 1fr; }
 
-  /* Sidebar becomes a sticky top strip; items scroll horizontally. */
-  .nav {
-    flex-direction: row; align-items: center; gap: 2px;
-    padding: 8px 10px; overflow-x: auto;
+  /* Sidebar becomes a left drawer behind a hamburger (keeps the desktop
+     vertical layout, the badges, and the version footer). */
+  .mobile-bar {
+    display: flex; align-items: center; gap: 10px;
     position: sticky; top: 0; z-index: 50;
-    border-right: none; border-bottom: 1px solid var(--border);
-    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
   }
-  .nav::-webkit-scrollbar { display: none; }
-  .nav-logo { font-size: 15px; padding: 4px 8px; white-space: nowrap; }
-  .nav-item { white-space: nowrap; padding: 8px 10px; font-size: 13px; }
-  .nav-item .ico { margin-right: 5px; }
-  .nav-count, .nav-alert { margin-left: 6px; }
-  .nav-foot { display: none; }           /* version lives on desktop; space is precious here */
-  .nav-spacer { display: none; }
+  .burger {
+    position: relative; background: none; border: 1px solid var(--border-lit);
+    color: var(--text); font-size: 17px; line-height: 1;
+    padding: 7px 11px; border-radius: 9px; cursor: pointer;
+  }
+  .burger-dot {
+    position: absolute; top: -3px; right: -3px; width: 10px; height: 10px;
+    border-radius: 50%; background: var(--warn); box-shadow: 0 0 8px var(--warn);
+  }
+  .mobile-title { font-size: 14px; font-weight: 600; }
+  .nav-backdrop {
+    position: fixed; inset: 0; z-index: 59; background: rgba(0,0,0,0.55);
+  }
+  .nav {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 60;
+    width: min(78vw, 290px);
+    border-right: 1px solid var(--border-lit);
+    transform: translateX(-105%); transition: transform 0.18s ease;
+  }
+  .nav.open { transform: none; }
 
   /* Cards: everything full-width, gentler padding. */
   .main { padding: 14px 12px; }
@@ -494,4 +507,9 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
   .map-hint { display: none; }           /* wheel/drag hints are desktop-speak */
 
   .page-head { flex-wrap: wrap; gap: 8px; }
+}
+
+/* Desktop: mobile chrome doesn't exist. */
+@media (min-width: 861px) {
+  .mobile-bar, .nav-backdrop { display: none; }
 }

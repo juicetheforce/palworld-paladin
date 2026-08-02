@@ -95,6 +95,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   const [section, setSection] = useState<Section>("dashboard");
   const logout = async () => { await api.logout(); onLogout(); };
   const { online, players, paladinVersion } = useServerState(10000);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [updAvail, setUpdAvail] = useState(false);
 
   // Update-availability for the nav badge: consulted on app load and every
@@ -116,15 +117,26 @@ function Shell({ onLogout }: { onLogout: () => void }) {
     return () => { alive = false; clearTimeout(timer); };
   }, []);
 
+  const currentLabel = NAV.find((n) => n.id === section)?.label ?? "";
+
   return (
     <div className="shell">
-      <nav className="nav">
+      {/* Mobile-only top bar: hamburger + current page; the update dot
+          keeps the alert visible even with the drawer closed. */}
+      <div className="mobile-bar">
+        <button className="burger" onClick={() => setMenuOpen(true)} aria-label="Menu">
+          ☰{updAvail && <span className="burger-dot" />}
+        </button>
+        <span className="mobile-title">Paladin · {currentLabel}</span>
+      </div>
+      {menuOpen && <div className="nav-backdrop" onClick={() => setMenuOpen(false)} />}
+      <nav className={"nav" + (menuOpen ? " open" : "")}>
         <div className="nav-logo">Pal<span>adin</span></div>
         {NAV.map((n) => (
           <div
             key={n.id}
             className={"nav-item" + (section === n.id ? " active" : "")}
-            onClick={() => setSection(n.id)}
+            onClick={() => { setSection(n.id); setMenuOpen(false); }}
           >
             <span className="ico">{n.icon}</span>
             {n.label}
