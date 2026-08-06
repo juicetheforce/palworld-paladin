@@ -200,6 +200,10 @@ write_sudoers() { # $1=user — exactly the supervise layer's contract, nothing 
     for verb in start stop restart kill show is-active status; do
       echo "$1 ALL=(root) NOPASSWD: /usr/bin/systemctl $verb $SERVER_UNIT"
     done
+    # sudoers matches arguments EXACTLY: the force-kill escalation invokes
+    # 'kill -s SIGKILL <unit>', which the bare 'kill' line does not cover
+    # (first discovered when a real world outlived the stop grace window).
+    echo "$1 ALL=(root) NOPASSWD: /usr/bin/systemctl kill -s SIGKILL $SERVER_UNIT"
   } > "$SUDOERS"
   chmod 0440 "$SUDOERS"
   visudo -cf "$SUDOERS" >/dev/null || die "generated sudoers failed validation"
@@ -259,9 +263,19 @@ fresh_install() {
   ask "Proceed with a full new Palworld server install as user '$SVC_USER'?"
   [ "$REPLY_ANS" = y ] || { say "Aborted."; exit 0; }
 
-  say "Installing packages (lib32gcc-s1, tar)…"
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update -qq && apt-get install -y -qq lib32gcc-s1 tar >/dev/null
+  # SteamCMD is a 32-bit binary: the one real dependency is 32-bit glibc.
+  # Branch on the package manager for the two big families; refuse honestly
+  # elsewhere rather than guessing at a distro's multilib ceremony.
+  if command -v apt-get >/dev/null; then
+    say "Installing packages (lib32gcc-s1, tar) via apt…"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq && apt-get install -y -qq lib32gcc-s1 tar >/dev/null
+  elif command -v dnf >/dev/null; then
+    say "Installing packages (32-bit glibc, tar) via dnf…"
+    dnf install -y -q glibc.i686 libstdc++.i686 tar >/dev/null
+  else
+    die "No apt or dnf found. Fresh installs need 32-bit glibc for SteamCMD — install it with your distro's package manager (Arch: enable multilib and install lib32-glibc; immutable distros: layer glibc.i686), then rerun this installer. Adopting an ALREADY-RUNNING server does not need this step."
+  fi
 
   id "$SVC_USER" >/dev/null 2>&1 || useradd -r -m -d "/home/$SVC_USER" -s /usr/sbin/nologin "$SVC_USER"
   SRV_HOME="/home/$SVC_USER"; INSTALL_DIR="$SRV_HOME/palserver"
