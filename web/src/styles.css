@@ -523,3 +523,6 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
   .hero-stats { gap: 16px; }
   .main { padding: 12px 8px; }
 }
+
+.upd-avail { color: var(--warn); text-decoration: none; margin-left: 2px; }
+.upd-avail:hover { text-decoration: underline; }

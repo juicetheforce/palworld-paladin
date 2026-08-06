@@ -64,6 +64,7 @@ type Server struct {
 	logTail        func(n int) ([]string, error)
 	gameTime       func(ctx context.Context) (string, int, bool)
 	paladinVersion string
+	paladinLatest  func(ctx context.Context) string
 	actors         ActorsFunc
 	mapImagePath   string
 	world          WorldFunc
@@ -100,6 +101,7 @@ type Config struct {
 	LogTail        func(n int) ([]string, error)
 	GameTime       func(ctx context.Context) (string, int, bool)
 	PaladinVersion string
+	PaladinLatest  func(ctx context.Context) string
 	Actors         ActorsFunc
 	MapImagePath   string
 	World          WorldFunc
@@ -120,8 +122,8 @@ func New(cfg Config) *Server {
 		keyList: cfg.KeyList, settingsValues: cfg.SettingsValues, commit: cfg.Commit,
 		logTail: cfg.LogTail, gameTime: cfg.GameTime,
 		actors: cfg.Actors, mapImagePath: cfg.MapImagePath, world: cfg.World,
-		paladinVersion: cfg.PaladinVersion,
-		actions:        newActionLog(100), hub: cfg.Hub, static: cfg.Static, mux: http.NewServeMux(),
+		paladinVersion: cfg.PaladinVersion, paladinLatest: cfg.PaladinLatest,
+		actions: newActionLog(100), hub: cfg.Hub, static: cfg.Static, mux: http.NewServeMux(),
 	}
 	s.routes()
 	return s
@@ -288,6 +290,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 // StatusResponse is the dashboard payload (read-only; §6.5 live tier).
 type StatusResponse struct {
 	PaladinVersion string  `json:"paladin_version,omitempty"`
+	PaladinLatest  string  `json:"paladin_latest,omitempty"`
 	InGameTime     string  `json:"in_game_time,omitempty"`
 	InGameDays     int     `json:"in_game_days,omitempty"`
 	ServerName     string  `json:"server_name"`
@@ -326,6 +329,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	resp.Version, resp.WorldGUID = info.Version, info.WorldGUID
 
 	resp.PaladinVersion = s.paladinVersion
+	if s.paladinLatest != nil {
+		resp.PaladinLatest = s.paladinLatest(r.Context())
+	}
 	if s.gameTime != nil {
 		if t, days, ok := s.gameTime(ctx); ok {
 			resp.InGameTime, resp.InGameDays = t, days

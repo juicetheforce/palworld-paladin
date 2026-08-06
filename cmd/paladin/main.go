@@ -20,6 +20,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -700,6 +701,7 @@ func cmdServe(args []string) error {
 		LogTail:        func(n int) ([]string, error) { return events.TailFile(logPath, n) },
 		GameTime:       cachedGameTime(d, 20*time.Second),
 		PaladinVersion: version,
+		PaladinLatest:  cachedPaladinLatest(version, 12*time.Hour),
 		Actors:         d.api.Actors,
 		MapImagePath:   cfg.worldMapFile(),
 		World:          makeWorldFunc(d),
@@ -1048,4 +1050,51 @@ func detectWorldDir(root string) (string, error) {
 		return "", fmt.Errorf("expected exactly one world under %s, found %v", root, worlds)
 	}
 	return filepath.Join(root, worlds[0]), nil
+}
+
+// cachedPaladinLatest lazily asks GitHub for the newest release tag when
+// the status endpoint is polled (human-presence-triggered, like every
+// other check here), cached for ttl. Returns "" when: running a dev
+// build (nothing to compare), already current, or the check fails —
+// the indicator simply doesn't render. One request per ttl per install
+// keeps us far under GitHub's unauthenticated rate limits.
+func cachedPaladinLatest(current string, ttl time.Duration) func(ctx context.Context) string {
+	if current == "dev" || current == "" {
+		return nil
+	}
+	var mu sync.Mutex
+	var at time.Time
+	var latest string
+	client := &http.Client{Timeout: 6 * time.Second}
+	return func(ctx context.Context) string {
+		mu.Lock()
+		defer mu.Unlock()
+		if time.Since(at) < ttl {
+			if latest != current {
+				return latest
+			}
+			return ""
+		}
+		at = time.Now()
+		req, _ := http.NewRequestWithContext(ctx, "GET",
+			"https://api.github.com/repos/juicetheforce/palworld-paladin/releases/latest", nil)
+		resp, err := client.Do(req)
+		if err != nil {
+			latest = ""
+			return ""
+		}
+		defer resp.Body.Close()
+		var body struct {
+			TagName string `json:"tag_name"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&body) != nil {
+			latest = ""
+			return ""
+		}
+		latest = body.TagName
+		if latest != current {
+			return latest
+		}
+		return ""
+	}
 }

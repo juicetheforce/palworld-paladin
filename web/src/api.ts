@@ -11,6 +11,7 @@ export interface StatusResponse {
   players: number;
   max_players: number;
   paladin_version?: string;
+  paladin_latest?: string;
   in_game_time?: string;
   in_game_days?: number;
   bases: number;

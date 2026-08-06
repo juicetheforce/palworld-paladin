@@ -30,6 +30,19 @@ tar -czf "$out/$asset" -C "$out" paladin
 
 echo
 echo "Done: $out/$asset"
+echo "Suggested release notes (paste into the GitHub release body):"
+echo "-----------------------------------------------------------"
+cat <<NOTES
+## Paladin $TAG
+
+- <what changed and why>
+
+**Install or update (same command):**
+\`\`\`
+curl -fsSL https://raw.githubusercontent.com/juicetheforce/palworld-paladin/main/scripts/install.sh | sudo bash
+\`\`\`
+NOTES
+echo "-----------------------------------------------------------"
 echo "Next steps:"
 echo "  git tag $TAG && git push origin $TAG"
 echo "  Create a GitHub release for $TAG and upload BOTH files from $out/,"

@@ -94,7 +94,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
 function Shell({ onLogout }: { onLogout: () => void }) {
   const [section, setSection] = useState<Section>("dashboard");
   const logout = async () => { await api.logout(); onLogout(); };
-  const { online, players, paladinVersion } = useServerState(10000);
+  const { online, players, paladinVersion, paladinLatest } = useServerState(10000);
   const [menuOpen, setMenuOpen] = useState(false);
   const [updAvail, setUpdAvail] = useState(false);
 
@@ -150,7 +150,19 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         ))}
         <div className="nav-spacer" />
         <div className="nav-logout" onClick={logout}>Sign out</div>
-        <div className="nav-foot">Paladin {paladinVersion || "…"}</div>
+        <div className="nav-foot">
+          Paladin {paladinVersion || "…"}
+          {paladinLatest && (
+            <a
+              className="upd-avail"
+              href="https://github.com/juicetheforce/palworld-paladin/releases/latest"
+              target="_blank" rel="noreferrer"
+              title={`${paladinLatest} is available — update with: curl -fsSL https://raw.githubusercontent.com/juicetheforce/palworld-paladin/main/scripts/install.sh | sudo bash`}
+            >
+              · update
+            </a>
+          )}
+        </div>
       </nav>
       <main className="main">
         {section === "dashboard" ? <Dashboard /> : section === "players" ? <Players /> : section === "console" ? <ServerAdmin /> : section === "backups" ? <Backups /> : section === "settings" ? <Settings /> : section === "map" ? <WorldMap /> : <ComingSoon section={section} />}
