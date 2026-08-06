@@ -526,3 +526,9 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 
 .upd-avail { color: var(--warn); text-decoration: none; margin-left: 2px; }
 .upd-avail:hover { text-decoration: underline; }
+
+.set-row.invalid { outline: 1px solid var(--bad); outline-offset: -1px; border-radius: 8px; }
+.set-err { color: var(--bad); font-size: 11.5px; margin-right: 8px; }
+.set-err a { cursor: pointer; text-decoration: underline; margin-left: 6px; }
+.commit-blocked { color: var(--bad); font-size: 12px; }
+.set-reset { margin-left: 8px; white-space: nowrap; }
