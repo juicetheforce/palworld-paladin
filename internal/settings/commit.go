@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/juicetheforce/palworld-paladin/internal/maintain"
 )
@@ -21,6 +22,9 @@ type CommitPayload struct {
 	INIPath string
 	// WorldDir: the active world folder (for WorldOption.sav detection).
 	WorldDir string
+
+	clearWorldOption bool   // set by PreCheck: staged world keys + override present
+	clearedWorldOpt  string // set by Apply: where the override was moved
 	// Staged: ini key → desired value (canonical casing).
 	Staged map[string]any
 	// WorldBackup performs the BACKUP step (world-folder copy); supplied
@@ -58,18 +62,49 @@ func (p *CommitPayload) PreCheck(ctx context.Context) error {
 		return fmt.Errorf("current ini failed structural validation (fix before committing): %w", err)
 	}
 	p.warnings = nil
+	p.clearWorldOption = false
 	if p.WorldDir != "" {
 		if _, err := os.Stat(filepath.Join(p.WorldDir, "WorldOption.sav")); err == nil {
-			keys := make([]string, 0, len(p.Staged))
-			for k := range p.Staged {
-				keys = append(keys, k)
+			// §11 CLOSED (verified on a fresh world AND the live box,
+			// 2026-08-07): on an existing world the server reads gameplay
+			// keys from WorldOption.sav and IGNORES the ini for them;
+			// identity keys (name, passwords, ports, caps) still come from
+			// the ini. A commit that only touches identity keys can leave
+			// the file alone; anything else must clear it during APPLY
+			// (while the server is stopped and the cycle backup already
+			// holds a copy) or the commit is a silent no-op in-game.
+			if stagedTouchesWorldKeys(p.Staged) {
+				p.clearWorldOption = true
 			}
-			p.warnings = append(p.warnings, fmt.Sprintf(
-				"WorldOption.sav exists in this world's save folder; on existing worlds it overrides the ini for the keys it contains, so some of the staged keys (%s) may have no in-game effect. (Exact coverage is an open item — see docs/DESIGN.md §11.)",
-				strings.Join(keys, ", ")))
 		}
 	}
 	return nil
+}
+
+// identityKeys are read from the ini even on existing worlds (verified:
+// changing these through a commit works with WorldOption.sav present).
+// Everything else is assumed world-owned once a WorldOption.sav exists —
+// over-clearing is harmless (the just-written ini is the source of truth),
+// under-clearing silently defeats the commit.
+var identityKeys = map[string]bool{
+	"ServerName": true, "ServerDescription": true,
+	"AdminPassword": true, "ServerPassword": true,
+	"PublicIP": true, "PublicPort": true,
+	"ServerPlayerMaxNum": true,
+	"RCONEnabled":        true, "RCONPort": true,
+	"RESTAPIEnabled": true, "RESTAPIPort": true,
+	"Region": true, "bShowPlayerList": true,
+	"LogFormatType": true, "CrossplayPlatforms": true,
+	"bIsUseBackupSaveData": true,
+}
+
+func stagedTouchesWorldKeys(staged map[string]any) bool {
+	for k := range staged {
+		if !identityKeys[k] {
+			return true
+		}
+	}
+	return false
 }
 
 // Backup delegates the world copy to the backup package's function.
@@ -99,7 +134,22 @@ func (p *CommitPayload) Apply(ctx context.Context) error {
 		}
 		ini.SetRaw(def.Key, raw)
 	}
-	return WriteINIFileAtomic(p.INIPath, ini)
+	if err := WriteINIFileAtomic(p.INIPath, ini); err != nil {
+		return err
+	}
+	// Neutralize the WorldOption.sav override so the ini just written is
+	// what the server actually loads (the core-promise fix). Rename, not
+	// delete: instantly restorable by hand, and RollbackApply undoes it.
+	// The cycle backup taken at BACKUP also holds the original.
+	if p.clearWorldOption {
+		src := filepath.Join(p.WorldDir, "WorldOption.sav")
+		dst := fmt.Sprintf("%s.pre-paladin-%d", src, time.Now().Unix())
+		if err := os.Rename(src, dst); err != nil {
+			return fmt.Errorf("clear WorldOption.sav override: %w", err)
+		}
+		p.clearedWorldOpt = dst
+	}
+	return nil
 }
 
 // RollbackApply restores the pre-write copy byte-for-byte.
@@ -117,6 +167,12 @@ func (p *CommitPayload) RollbackApply(ctx context.Context) error {
 	if _, err := LoadINIFile(p.INIPath); err != nil {
 		return fmt.Errorf("restored ini failed validation: %w", err)
 	}
+	if p.clearedWorldOpt != "" {
+		if err := os.Rename(p.clearedWorldOpt, filepath.Join(p.WorldDir, "WorldOption.sav")); err != nil {
+			return fmt.Errorf("restore WorldOption.sav: %w", err)
+		}
+		p.clearedWorldOpt = ""
+	}
 	return nil
 }
 
@@ -131,6 +187,10 @@ func (p *CommitPayload) Verify(ctx context.Context) (maintain.VerifyResult, erro
 	// PreCheck's WorldOption.sav caution is actionable (a staged key may
 	// silently not take on this world) → warning.
 	res.Warnings = append(res.Warnings, p.warnings...)
+	if p.clearedWorldOpt != "" {
+		res.Notes = append(res.Notes, fmt.Sprintf(
+			"WorldOption.sav override cleared (saved as %s) — the ini is now authoritative for this world", filepath.Base(p.clearedWorldOpt)))
+	}
 
 	live, err := p.ReadSettings(ctx)
 	if err != nil {

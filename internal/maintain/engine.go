@@ -3,6 +3,7 @@ package maintain
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -284,7 +285,12 @@ func (e *Engine) run(ctx context.Context, id string, p Payload) Outcome {
 		res.Warnings = append(res.Warnings, "verify itself errored: "+verr.Error())
 	}
 	if len(res.Warnings) > 0 {
-		e.cfg.Journal.StepFailed(id, string(StepVerify), fmt.Sprintf("%d warning(s)", len(res.Warnings)))
+		// Verbatim texts, not a count: a count-only rendering hid "value
+		// did not take" for two days of live-box forensics. Never again.
+		for _, w := range res.Warnings {
+			e.emit(id, p, EventStepFailed, StepVerify, "verify: "+w)
+		}
+		e.cfg.Journal.StepFailed(id, string(StepVerify), strings.Join(res.Warnings, " | "))
 		e.emit(id, p, EventStepFailed, StepVerify, fmt.Sprintf("%d warning(s) — reported, not rolled back", len(res.Warnings)))
 		return Outcome{Status: StatusSuccessWithWarnings, FailedStep: StepVerify,
 			Detail: "applied and running; verify reported warnings", VerifyIssues: res.Warnings,

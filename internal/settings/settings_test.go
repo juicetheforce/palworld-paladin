@@ -242,7 +242,10 @@ func TestVerifyHonesty(t *testing.T) {
 	}
 }
 
-func TestWorldOptionSavWarningSurfaces(t *testing.T) {
+func TestWorldOptionOverrideClearedNotJustWarned(t *testing.T) {
+	// Contract upgraded 2026-08-07 (§11 closed): a world-key commit no
+	// longer merely WARNS about WorldOption.sav — APPLY clears it so the
+	// ini is authoritative, and VERIFY notes the clearing.
 	p, _ := newPayload(t)
 	if err := os.WriteFile(filepath.Join(p.WorldDir, "WorldOption.sav"), []byte("x"), 0o640); err != nil {
 		t.Fatal(err)
@@ -250,12 +253,21 @@ func TestWorldOptionSavWarningSurfaces(t *testing.T) {
 	if err := p.PreCheck(context.Background()); err != nil {
 		t.Fatalf("PreCheck: %v", err)
 	}
+	if !p.clearWorldOption {
+		t.Fatal("PreCheck must schedule the override clearing for world-key commits")
+	}
+	if err := p.Apply(context.Background()); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(p.WorldDir, "WorldOption.sav")); !os.IsNotExist(err) {
+		t.Fatal("Apply must clear the override")
+	}
 	p.ReadSettings = func(context.Context) (map[string]any, error) {
 		return map[string]any{"ExpRate": 2.0, "autoSaveSpan": 60.0, "bEnableVoiceChat": true}, nil
 	}
 	res, _ := p.Verify(context.Background())
-	if !strings.Contains(strings.Join(res.Warnings, "\n"), "WorldOption.sav exists") {
-		t.Fatalf("WorldOption.sav must surface as a warning: %v", res.Warnings)
+	if !strings.Contains(strings.Join(res.Notes, "\n"), "override cleared") {
+		t.Fatalf("Verify must note the clearing: %v", res.Notes)
 	}
 }
 
@@ -323,5 +335,69 @@ func TestValidateStagedRejectsProtectedKeys(t *testing.T) {
 	}
 	if err := kl.ValidateStaged(map[string]any{"ExpRate": 2.0}); err != nil {
 		t.Fatalf("normal key must pass: %v", err)
+	}
+}
+
+func TestCommitClearsWorldOptionForWorldKeys(t *testing.T) {
+	dir := t.TempDir()
+	ini := filepath.Join(dir, "PalWorldSettings.ini")
+	os.WriteFile(ini, []byte("[/Script/Pal.PalGameWorldSettings]\nOptionSettings=(PlayerDamageRateAttack=1.000000,ServerName=\"x\")\n"), 0o644)
+	world := filepath.Join(dir, "world")
+	os.MkdirAll(world, 0o755)
+	os.WriteFile(filepath.Join(world, "WorldOption.sav"), []byte("override"), 0o644)
+
+	kl, _ := LoadKeyList()
+	p := &CommitPayload{KeyList: kl, INIPath: ini, WorldDir: world,
+		Staged:      map[string]any{"PlayerDamageRateAttack": 5.0},
+		WorldBackup: func(context.Context) error { return nil },
+		ReadSettings: func(context.Context) (map[string]any, error) {
+			return map[string]any{"PlayerDamageRateAttack": 5.0}, nil
+		}}
+	if err := p.PreCheck(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !p.clearWorldOption {
+		t.Fatal("world-key commit with WorldOption.sav present must clear it")
+	}
+	if err := p.Apply(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(world, "WorldOption.sav")); !os.IsNotExist(err) {
+		t.Fatal("override must be renamed away after Apply")
+	}
+	// Rollback must restore it byte-for-byte.
+	if err := p.RollbackApply(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(world, "WorldOption.sav"))
+	if err != nil || string(b) != "override" {
+		t.Fatalf("rollback must restore the override: %v %q", err, b)
+	}
+}
+
+func TestIdentityOnlyCommitLeavesWorldOption(t *testing.T) {
+	dir := t.TempDir()
+	ini := filepath.Join(dir, "PalWorldSettings.ini")
+	os.WriteFile(ini, []byte("[/Script/Pal.PalGameWorldSettings]\nOptionSettings=(ServerName=\"x\")\n"), 0o644)
+	world := filepath.Join(dir, "world")
+	os.MkdirAll(world, 0o755)
+	os.WriteFile(filepath.Join(world, "WorldOption.sav"), []byte("override"), 0o644)
+
+	kl, _ := LoadKeyList()
+	p := &CommitPayload{KeyList: kl, INIPath: ini, WorldDir: world,
+		Staged:       map[string]any{"ServerName": "Palbrary"},
+		WorldBackup:  func(context.Context) error { return nil },
+		ReadSettings: func(context.Context) (map[string]any, error) { return nil, nil }}
+	if err := p.PreCheck(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if p.clearWorldOption {
+		t.Fatal("identity-only commit must NOT clear the world override")
+	}
+	if err := p.Apply(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(world, "WorldOption.sav")); err != nil {
+		t.Fatal("override must be untouched by identity-only commits")
 	}
 }
