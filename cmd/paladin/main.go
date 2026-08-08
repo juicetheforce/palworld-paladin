@@ -968,6 +968,12 @@ func makeCommitRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.Co
 		cycleID := fmt.Sprintf("commit-%d", time.Now().Unix())
 		out, _ := eng.RunCycle(context.Background(), cycleID, p, maintain.RunOpts{Announcements: ann, TolerateStopped: true})
 
+		// Verify notes are good news the operator should still SEE —
+		// e.g. "WorldOption.sav override cleared". Silence, even benign,
+		// is against house religion.
+		for _, n := range out.VerifyNotes {
+			hub.Log("verify: " + n)
+		}
 		switch out.Status {
 		case maintain.StatusSuccess:
 			hub.Done("commit", fmt.Sprintf("Settings applied — %d change(s) live and verified.", len(staged)), true)
