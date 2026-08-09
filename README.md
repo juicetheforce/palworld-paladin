@@ -121,7 +121,7 @@ Paladin is Apache-2.0 and stands on some excellent community work:
 
 ## Status
 
-v0.1.x. One server, one host, Linux only. It's been run hard on a real
+v0.2.x. One server, one host, Linux only. It's been run hard on a real
 server through every feature — but it's young, so keep backups on (it does
 that itself, conveniently). Issues and PRs welcome, especially for the
 settings data file when game patches add new keys — that's a JSON edit, not
