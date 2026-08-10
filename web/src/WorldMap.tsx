@@ -19,7 +19,12 @@ interface MapActor {
 // the island — why every eyeball estimate failed), north edge solved
 // identically from both points (2487). If the artwork is ever replaced,
 // recalibrate with two (in-game coord ↔ pixel) pairs the same way.
-const XMIN = -3971, XMAX = 2173, YMIN = -3657, YMAX = 2487;
+// Bounds recalibrated 2026-08-08 from a FOUR-point ground-truth survey
+// (in-game Paldex readout vs measured pixels on the 2048px artwork),
+// least-squares fit, all residuals < 1px. The original single-anchor
+// calibration nailed offset but doubled the span (dots compressed toward
+// center, drifting with distance from spawn). Axes: no rotation/shear.
+const XMIN = -1921, XMAX = 1234, YMIN = -2126, YMAX = 1028;
 
 export function WorldMap() {
   const [actors, setActors] = useState<MapActor[]>([]);
