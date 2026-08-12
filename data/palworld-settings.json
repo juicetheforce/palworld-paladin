@@ -192,18 +192,6 @@
       "verify": []
     },
     {
-      "key": "AllowConnectPlatform",
-      "category": "server",
-      "type": "string",
-      "default": "Steam",
-      "tooltip": "Superseded platform-restriction key.",
-      "added_in": null,
-      "source": "deprecated",
-      "gotcha": "Officially \"Not available in this version. Use CrossplayPlatforms instead.\" VERIFIED absent from the 1.0.1 template — kept so the parser recognizes it in adopted EA-era configs; render read-only/hidden.",
-      "kb_link": null,
-      "verify": []
-    },
-    {
       "key": "CrossplayPlatforms",
       "category": "server",
       "type": "list",
@@ -547,6 +535,16 @@
       "source": "official",
       "gotcha": "Disabling raids is a well-known memory-load mitigation, but 1.0 rebuilt raids into a wave system that scales with your base — turning them off deletes headline 1.0 content. Prefer scheduled restarts (Paladin's RAM-threshold restart) instead.",
       "kb_link": null,
+      "verify": []
+    },
+    {
+      "key": "bAllowEnemyCampSpawnNearBaseCamp",
+      "category": "features",
+      "type": "bool",
+      "default": false,
+      "tooltip": "Allow enemy camps to spawn near player base camps. Added in game patch 1.0.3.",
+      "added_in": null,
+      "source": "official",
       "verify": []
     },
     {
