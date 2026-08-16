@@ -22,6 +22,7 @@ func TestResetVerifyAcceptsSameGUIDWhenWorldIsFresh(t *testing.T) {
 	p := &ResetPayload{
 		WorldDir:      world,
 		ReadWorldGUID: func(context.Context) (string, error) { return "ABC123", nil },
+		ForceSave:     func(context.Context) error { return nil },
 	}
 	p.oldGUID = "ABC123"
 	p.startedAt = time.Now().Add(-time.Minute)

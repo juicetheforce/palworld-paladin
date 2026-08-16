@@ -34,6 +34,10 @@ type ResetPayload struct {
 	WorldDir string
 	// ReadWorldGUID returns the live server's world GUID after restart.
 	ReadWorldGUID func(ctx context.Context) (string, error)
+	// ForceSave asks the live server to write the world to disk. A newly
+	// generated world exists only in memory until the first autosave, so
+	// VERIFY forces a save and then checks the file it produced.
+	ForceSave func(ctx context.Context) error
 
 	// ResetSettings: rewrite PalWorldSettings.ini to game defaults.
 	// (Default TRUE in the UI: a reset means a fresh server.) The
@@ -66,7 +70,7 @@ func (p *ResetPayload) Name() string { return "reset" }
 // PreCheck runs while the server is still up: confirm we know what we are
 // about to destroy, and that a backup can plausibly be written.
 func (p *ResetPayload) PreCheck(ctx context.Context) error {
-	if p.Mgr == nil || p.ReadWorldGUID == nil {
+	if p.Mgr == nil || p.ReadWorldGUID == nil || p.ForceSave == nil {
 		return fmt.Errorf("reset payload not fully wired")
 	}
 	if p.ResetSettings && p.ResetINIToDefaults == nil {
@@ -156,12 +160,35 @@ func (p *ResetPayload) Verify(ctx context.Context) (maintain.VerifyResult, error
 	// an earlier GUID-difference check cried wolf on a perfectly good
 	// reset). Freshness is what matters: the world files must have been
 	// created AFTER this cycle started.
+	// A freshly generated world lives in memory until the first autosave,
+	// so ASK for a save, then poll briefly for the file it writes. (An
+	// earlier version checked immediately after START and failed a good
+	// reset because the world had not been persisted yet.)
 	lvl := filepath.Join(p.WorldDir, "Level.sav")
-	fi, statErr := os.Stat(lvl)
+	if err := p.ForceSave(ctx); err != nil {
+		res.Warnings = append(res.Warnings, fmt.Sprintf(
+			"could not force a save to confirm the fresh world (%v); the reset itself completed", err))
+	}
+	var fi os.FileInfo
+	var statErr error
+	deadline := time.Now().Add(45 * time.Second)
+	for {
+		fi, statErr = os.Stat(lvl)
+		if statErr == nil || time.Now().After(deadline) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			statErr = ctx.Err()
+		case <-time.After(2 * time.Second):
+			continue
+		}
+		break
+	}
 	switch {
 	case statErr != nil:
 		res.Warnings = append(res.Warnings, fmt.Sprintf(
-			"no Level.sav in %s after restart (%v) — the server may not have generated a fresh world yet", p.WorldDir, statErr))
+			"no Level.sav in %s within 45s of restart (%v) — the fresh world may not have been written yet; check the Players page once the server has autosaved", p.WorldDir, statErr))
 	case fi.ModTime().Before(p.startedAt):
 		res.Warnings = append(res.Warnings, fmt.Sprintf(
 			"world files predate this reset (Level.sav modified %s, reset began %s) — the wipe may not have taken",

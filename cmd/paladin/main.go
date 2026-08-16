@@ -962,6 +962,7 @@ func makeResetRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.Res
 				}
 				return info.WorldGUID, nil
 			},
+			ForceSave:     func(c context.Context) error { return d.api.Save(c) },
 			ResetSettings: !opts.KeepSettings,
 			ResetINIToDefaults: func(c context.Context) error {
 				return settings.ResetFileToDefaults(d.iniPath, d.keyList)
