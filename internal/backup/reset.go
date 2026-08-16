@@ -53,7 +53,8 @@ type ResetPayload struct {
 	// that data). Called during APPLY only when WipePlayerData is set.
 	WipePaladinPlayerData func(ctx context.Context) error
 
-	oldGUID     string // world GUID being wiped (for the VERIFY contrast)
+	oldGUID     string    // world GUID being wiped (informational)
+	startedAt   time.Time // cycle start; world files must postdate it
 	asidePath   string // renamed-aside live world (rollback anchor)
 	backupEntry *Entry // catalogued pre-reset backup
 }
@@ -79,6 +80,7 @@ func (p *ResetPayload) PreCheck(ctx context.Context) error {
 		return fmt.Errorf("active world dir %s: %v", p.WorldDir, err)
 	}
 	p.oldGUID = filepath.Base(filepath.Clean(p.WorldDir))
+	p.startedAt = time.Now()
 	return nil
 }
 
@@ -148,15 +150,32 @@ func (p *ResetPayload) Verify(ctx context.Context) (maintain.VerifyResult, error
 	if err != nil {
 		return res, fmt.Errorf("world identity readback failed: %w", err)
 	}
-	if guid == p.oldGUID {
+	// NOT a GUID comparison: Palworld names the world folder after
+	// DedicatedServerName in GameUserSettings.ini, so a regenerated world
+	// legitimately reuses the SAME GUID (verified on the test box —
+	// an earlier GUID-difference check cried wolf on a perfectly good
+	// reset). Freshness is what matters: the world files must have been
+	// created AFTER this cycle started.
+	lvl := filepath.Join(p.WorldDir, "Level.sav")
+	fi, statErr := os.Stat(lvl)
+	switch {
+	case statErr != nil:
 		res.Warnings = append(res.Warnings, fmt.Sprintf(
-			"server reports the SAME world GUID as before the reset (%s) — the wipe may not have taken", guid))
+			"no Level.sav in %s after restart (%v) — the server may not have generated a fresh world yet", p.WorldDir, statErr))
+	case fi.ModTime().Before(p.startedAt):
+		res.Warnings = append(res.Warnings, fmt.Sprintf(
+			"world files predate this reset (Level.sav modified %s, reset began %s) — the wipe may not have taken",
+			fi.ModTime().Format(time.RFC3339), p.startedAt.Format(time.RFC3339)))
+	default:
+		res.Notes = append(res.Notes, fmt.Sprintf(
+			"fresh world generated at %s", fi.ModTime().Format(time.RFC3339)))
 	}
 	if p.backupEntry != nil {
 		res.Notes = append(res.Notes, fmt.Sprintf(
 			"pre-reset world saved as backup %s — restore it from the Backups page to undo this reset", p.backupEntry.ID))
 	}
-	res.Notes = append(res.Notes, fmt.Sprintf("fresh world generated (GUID %s)", guid))
+	res.Notes = append(res.Notes, fmt.Sprintf(
+		"world GUID is %s (unchanged by design — Palworld names the world folder from DedicatedServerName)", guid))
 	if p.ResetSettings {
 		res.Notes = append(res.Notes, "settings reset to defaults (REST/admin config preserved)")
 	}
