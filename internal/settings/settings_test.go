@@ -55,7 +55,6 @@ func TestValidateStaged(t *testing.T) {
 		}, ""},
 		{"unknown key", map[string]any{"ExpRateX": 2.0}, "unknown key"},
 		{"wrong casing rejected for writes", map[string]any{"playerstomachdecreacerate": 0.5}, "wrong casing"},
-		{"deprecated blocked", map[string]any{"AllowConnectPlatform": "Steam"}, "deprecated"},
 		{"bool type", map[string]any{"bEnableVoiceChat": "True"}, "want bool"},
 		{"int rejects fraction", map[string]any{"ServerPlayerMaxNum": 16.5}, "want integer"},
 		{"range max", map[string]any{"ServerPlayerMaxNum": 64.0}, "above maximum"},
@@ -76,6 +75,29 @@ func TestValidateStaged(t *testing.T) {
 				t.Fatalf("want error containing %q, got %v", tc.want, err)
 			}
 		})
+	}
+}
+
+// TestValidateStagedDeprecated uses a SYNTHETIC key list, not the shipped
+// data file: the deprecated-key rule is validation logic, and must keep
+// being tested even when no shipped key happens to be deprecated. (It
+// broke exactly that way when game patch 1.0.3 dropped
+// AllowConnectPlatform and the key was curated out of the data file.)
+func TestValidateStagedDeprecated(t *testing.T) {
+	kl, err := ParseKeyList([]byte(`{
+	  "game_version": "test",
+	  "keys": [
+	    {"key": "LegacyThing", "category": "misc", "type": "string",
+	     "default": "x", "added_in": null, "source": "deprecated",
+	     "tooltip": "superseded"}
+	  ]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = kl.ValidateStaged(map[string]any{"LegacyThing": "Steam"})
+	if err == nil || !strings.Contains(err.Error(), "deprecated") {
+		t.Fatalf("deprecated keys must be rejected as deprecated, got %v", err)
 	}
 }
 

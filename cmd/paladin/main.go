@@ -676,6 +676,7 @@ func cmdServe(args []string) error {
 			return d.mgr.Create(ctx, d.worldDir, backup.TriggerManual)
 		},
 		Restore: makeRestoreRunner(d, serveEngine, hub),
+		Reset:   makeResetRunner(d, serveEngine, hub),
 		KeyList: d.keyList,
 		SettingsValues: func() (map[string]string, error) {
 			ini, err := settings.LoadINIFile(d.iniPath)
@@ -944,6 +945,62 @@ func makeRestoreRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.R
 			hub.Error("restore", "Restore did not complete: "+out.Detail)
 		}
 		return webserv.RestoreResult{Status: string(out.Status), Detail: out.Detail}
+	}
+}
+
+// makeResetRunner builds the closure for the full-server-reset cycle:
+// same engine, same event bridge, most destructive payload. The typed
+// confirmation happened at the HTTP layer; here we just run it.
+func makeResetRunner(d *deps, eng *maintain.Engine, hub *events.Hub) webserv.ResetRunner {
+	return func(ctx context.Context, opts webserv.ResetOptions) webserv.ResetResult {
+		p := &backup.ResetPayload{
+			Mgr: d.mgr, WorldDir: d.worldDir,
+			ReadWorldGUID: func(c context.Context) (string, error) {
+				info, err := d.api.Info(c)
+				if err != nil {
+					return "", err
+				}
+				return info.WorldGUID, nil
+			},
+			ResetSettings: !opts.KeepSettings,
+			ResetINIToDefaults: func(c context.Context) error {
+				return settings.ResetFileToDefaults(d.iniPath, d.keyList)
+			},
+			WipePlayerData: opts.WipePlayerData,
+			WipePaladinPlayerData: func(c context.Context) error {
+				// Known-player history is DERIVED from the world save, so
+				// it dies with the world automatically. The only durable
+				// artifact is Palworld's own banlist.txt in SaveGames/.
+				banlist := filepath.Join(filepath.Dir(d.worldDir), "banlist.txt")
+				if err := os.Remove(banlist); err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("remove ban list %s: %w", banlist, err)
+				}
+				return nil
+			},
+		}
+
+		var ann []maintain.Announcement
+		if opts.Broadcast != "" {
+			ann = append(ann, maintain.Announcement{Message: opts.Broadcast, Wait: time.Duration(opts.Delay) * time.Second})
+		}
+
+		cycleID := fmt.Sprintf("reset-%d", time.Now().Unix())
+		out, _ := eng.RunCycle(context.Background(), cycleID, p, maintain.RunOpts{
+			Announcements: ann, TolerateStopped: true,
+		})
+
+		for _, n := range out.VerifyNotes {
+			hub.Log("reset: " + n)
+		}
+		switch out.Status {
+		case maintain.StatusSuccess:
+			hub.Done("reset", "Server reset complete — a fresh world is live.", true)
+		case maintain.StatusSuccessWithWarnings:
+			hub.Done("reset", "Server reset applied and server is up, with warnings: "+out.Detail, true)
+		default:
+			hub.Error("reset", "Server reset did not complete: "+out.Detail)
+		}
+		return webserv.ResetResult{Status: string(out.Status), Detail: out.Detail}
 	}
 }
 

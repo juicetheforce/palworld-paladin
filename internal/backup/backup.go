@@ -19,6 +19,10 @@ const (
 	TriggerPreCommit  Trigger = "pre-commit"
 	TriggerPreRestore Trigger = "pre-restore"
 	TriggerPreUpdate  Trigger = "pre-update"
+	// TriggerPreReset marks the world as it was immediately before a full
+	// server reset — the one backup an operator is most likely to want
+	// back, so the UI labels and colours it distinctly.
+	TriggerPreReset Trigger = "pre-reset"
 	TriggerScheduled  Trigger = "scheduled"
 	TriggerManual     Trigger = "manual"
 )

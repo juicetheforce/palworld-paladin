@@ -133,10 +133,15 @@ export function Backups() {
               <tr><td colSpan={6} className="pempty">No backups yet. Create one, or they appear automatically before commits, restores, and updates.</td></tr>
             )}
             {backups.map((b) => (
-              <tr key={b.id}>
+              <tr key={b.id} className={b.trigger === "pre-reset" ? "bk-row pre-reset" : ""}>
                 <td><input type="checkbox" className="bk-check" checked={selected.has(b.id)} onChange={() => toggle(b.id)} /></td>
                 <td><div className="pid" style={{ fontSize: 13 }}>{b.id}</div></td>
-                <td><span className={"trigger-badge t-" + b.trigger}>{b.trigger}</span></td>
+                <td>
+                  <span className={"trigger-badge t-" + b.trigger}>{b.trigger}</span>
+                  {b.trigger === "pre-reset" && (
+                    <div className="bk-note">world before the server was reset</div>
+                  )}
+                </td>
                 <td>{fmtSize(b.size_bytes)}</td>
                 <td className="bk-date">{new Date(b.created).toLocaleString()}</td>
                 <td style={{ textAlign: "right" }}>

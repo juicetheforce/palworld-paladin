@@ -189,6 +189,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, broadcast, delay_seconds }),
     }).then(j<{ accepted: boolean }>),
+  resetServer: (body: { confirm: string; keep_settings: boolean; wipe_player_data: boolean; broadcast: string; delay_seconds: number }) =>
+    fetch("/api/admin/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(j<{ accepted: boolean }>),
   settings: () => fetch("/api/admin/settings").then(j<{ keys: SettingsKey[]; values: Record<string, string> }>),
   commitSettings: (changes: Record<string, string>, broadcast = "", delay_seconds = 0) =>
     fetch("/api/admin/settings/commit", {

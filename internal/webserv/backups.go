@@ -25,6 +25,31 @@ type RestoreResult struct {
 // over the hub; wired in main.go beside the update runner.
 type RestoreRunner func(ctx context.Context, backupID, broadcast string, delaySec int) RestoreResult
 
+// ResetResult mirrors RestoreResult for the full-server-reset cycle.
+type ResetResult struct {
+	Status string
+	Detail string
+}
+
+// ResetRunner runs one full server-reset cycle (announce → save → stop →
+// pre-reset backup → wipe → start → verify). The typed confirmation is
+// enforced at the HTTP layer; by the time this runs, the operator has
+// been asked properly.
+type ResetRunner func(ctx context.Context, opts ResetOptions) ResetResult
+
+// ResetOptions carries the operator's choices from the danger-zone form.
+type ResetOptions struct {
+	KeepSettings   bool   // leave PalWorldSettings.ini alone (default: reset)
+	WipePlayerData bool   // clear known-players history and ban list
+	Broadcast      string // warning message ("" = none)
+	Delay          int    // seconds between warning and stop
+}
+
+// resetConfirmWord is the typed gate for the reset. Palworld flavour on
+// purpose: this is a game server, not a nuclear silo — but you still have
+// to spell it right.
+const resetConfirmWord = "ASTRALYM"
+
 var errBackupBusy = "a backup or restore is already running"
 
 // handleBackupCreate kicks a manual backup in the background (worlds can
@@ -104,6 +129,50 @@ type restoreReq struct {
 
 // handleBackupRestore kicks a restore cycle in the background; 202, with
 // progress on the live stream (same shape as the update cycle).
+// handleServerReset wipes the world and starts fresh. Guarded by a typed
+// confirmation word so it cannot be reached by a stray click or a
+// half-considered curl.
+func (s *Server) handleServerReset(w http.ResponseWriter, r *http.Request) {
+	if s.reset == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "reset not available"})
+		return
+	}
+	var req resetReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
+		return
+	}
+	if req.Confirm != resetConfirmWord {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "confirmation word does not match — type " + resetConfirmWord + " exactly"})
+		return
+	}
+	if !s.backupBusy.CompareAndSwap(false, true) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": errBackupBusy})
+		return
+	}
+	go func() {
+		defer s.backupBusy.Store(false)
+		res := s.reset(context.Background(), ResetOptions{
+			KeepSettings:   req.KeepSettings,
+			WipePlayerData: req.WipePlayerData,
+			Broadcast:      req.Broadcast,
+			Delay:          req.Delay,
+		})
+		ok := res.Status == "success" || res.Status == "success_with_warnings"
+		s.logAction("reset", res.Detail, ok)
+	}()
+	writeJSON(w, http.StatusAccepted, map[string]bool{"accepted": true})
+}
+
+type resetReq struct {
+	Confirm        string `json:"confirm"`
+	KeepSettings   bool   `json:"keep_settings"`
+	WipePlayerData bool   `json:"wipe_player_data"`
+	Broadcast      string `json:"broadcast"`
+	Delay          int    `json:"delay_seconds"`
+}
+
 func (s *Server) handleBackupRestore(w http.ResponseWriter, r *http.Request) {
 	if s.restore == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "restore not available"})

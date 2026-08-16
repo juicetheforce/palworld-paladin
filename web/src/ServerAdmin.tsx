@@ -39,6 +39,38 @@ export function ServerAdmin() {
     return () => clearInterval(id);
   }, [load]);
 
+  // Full-server reset (danger zone): typed confirmation, explicit choices.
+  const [rsOpen, setRsOpen] = useState(false);
+  const [rsWord, setRsWord] = useState("");
+  const [rsKeepSettings, setRsKeepSettings] = useState(false);
+  const [rsWipePlayers, setRsWipePlayers] = useState(false);
+  const [rsMsg, setRsMsg] = useState(
+    "The world is ending. There is no safe space. Hold your loved ones close. The end approaches.");
+  const [rsDelay, setRsDelay] = useState(60);
+  const [rsBusy, setRsBusy] = useState(false);
+  const [rsErr, setRsErr] = useState("");
+  const RESET_WORD = "ASTRALYM";
+
+  const doReset = async () => {
+    setRsErr("");
+    setRsBusy(true);
+    try {
+      await api.resetServer({
+        confirm: rsWord,
+        keep_settings: rsKeepSettings,
+        wipe_player_data: rsWipePlayers,
+        broadcast: rsMsg,
+        delay_seconds: rsMsg ? rsDelay : 0,
+      });
+      setRsWord("");
+      setRsOpen(false);
+    } catch (e) {
+      setRsErr((e as Error).message);
+    } finally {
+      setRsBusy(false);
+    }
+  };
+
   // Update-availability: fetch on page load (the backend lazily refreshes
   // a stale cache); poll while a check is in flight so the card updates
   // when the ~30-90s steamcmd query completes.
@@ -250,6 +282,66 @@ export function ServerAdmin() {
           </button>
         </div>
 
+
+        {/* Danger zone: full server reset */}
+        <div className="card span12 danger-zone">
+          <div className="card-label danger">Danger zone</div>
+          <InfoLabel label="Reset server to a fresh world"
+            info="Wipes the current world and starts a brand new one, as if the server were freshly installed. Your players warp back to day one. A full backup of the old world is taken first and appears in Backups, so this is undoable." />
+          <div className="upd-desc">
+            Everything in the current world — bases, Pals, characters, progress —
+            is deleted and a new world is generated. A <b>pre-reset backup</b> is
+            taken automatically first and shown in Backups, so you can restore
+            the old world if you change your mind.
+          </div>
+
+          {!rsOpen ? (
+            <button className="admin-btn danger" style={{ marginTop: 14 }} onClick={() => setRsOpen(true)}>
+              Reset server…
+            </button>
+          ) : (
+            <div className="admin-warn-opts" style={{ marginTop: 14 }}>
+              <label className="admin-check">
+                <input type="checkbox" checked={rsKeepSettings} onChange={(e) => setRsKeepSettings(e.target.checked)} />
+                Keep my current server settings (default: reset them to game defaults)
+              </label>
+              <label className="admin-check">
+                <input type="checkbox" checked={rsWipePlayers} onChange={(e) => setRsWipePlayers(e.target.checked)} />
+                Also clear the ban list (player history lives in the world and is wiped either way)
+              </label>
+
+              <input className="admin-input" value={rsMsg} onChange={(e) => setRsMsg(e.target.value)}
+                placeholder="Warning message to players (empty = no warning)" />
+              {rsMsg && (
+                <div className="admin-delay">
+                  <label>Warn for</label>
+                  <input type="number" min={0} max={600} value={rsDelay}
+                    onChange={(e) => setRsDelay(Math.max(0, +e.target.value))} />
+                  <span>seconds before the world ends</span>
+                </div>
+              )}
+
+              <div className="admin-delay" style={{ marginTop: 6 }}>
+                <label>Type <b>{RESET_WORD}</b> to confirm</label>
+                <input className="admin-input" style={{ maxWidth: 200 }} value={rsWord}
+                  autoComplete="off" spellCheck={false}
+                  onChange={(e) => setRsWord(e.target.value.toUpperCase())} />
+              </div>
+              {rsErr && <div className="set-err">{rsErr}</div>}
+
+              <div className="admin-btn-row" style={{ marginTop: 10 }}>
+                <button className="admin-btn danger lit-bad" disabled={rsWord !== RESET_WORD || rsBusy}
+                  onClick={doReset}>
+                  {rsBusy ? "Resetting…" : "Wipe the world and start fresh"}
+                </button>
+                <button className="admin-btn" disabled={rsBusy}
+                  onClick={() => { setRsOpen(false); setRsWord(""); setRsErr(""); }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Live activity (SSE) */}
         <div className="livelog-wrap">

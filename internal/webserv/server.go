@@ -56,6 +56,7 @@ type Server struct {
 	unitMemory     UnitMemoryFunc
 	createBackup   CreateBackupFunc
 	restore        RestoreRunner
+	reset          ResetRunner
 	backupBusy     atomic.Bool
 	keyList        *settings.KeyList
 	settingsValues SettingsValuesFunc
@@ -95,6 +96,7 @@ type Config struct {
 	UnitMemory     UnitMemoryFunc
 	CreateBackup   CreateBackupFunc
 	Restore        RestoreRunner
+	Reset          ResetRunner
 	KeyList        *settings.KeyList
 	SettingsValues SettingsValuesFunc
 	Commit         CommitRunner
@@ -118,7 +120,7 @@ func New(cfg Config) *Server {
 		update:     cfg.Update,
 		localBuild: cfg.LocalBuild, remoteBuild: cfg.RemoteBuild,
 		memRestart: cfg.MemRestart, unitMemory: cfg.UnitMemory,
-		createBackup: cfg.CreateBackup, restore: cfg.Restore,
+		createBackup: cfg.CreateBackup, restore: cfg.Restore, reset: cfg.Reset,
 		keyList: cfg.KeyList, settingsValues: cfg.SettingsValues, commit: cfg.Commit,
 		logTail: cfg.LogTail, gameTime: cfg.GameTime,
 		actors: cfg.Actors, mapImagePath: cfg.MapImagePath, world: cfg.World,
@@ -163,6 +165,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/admin/backups", s.requireAuth(http.HandlerFunc(s.handleBackupCreate)))
 	s.mux.Handle("POST /api/admin/backups/delete-batch", s.requireAuth(http.HandlerFunc(s.handleBackupDeleteBatch)))
 	s.mux.Handle("POST /api/admin/backups/restore", s.requireAuth(http.HandlerFunc(s.handleBackupRestore)))
+	s.mux.Handle("POST /api/admin/reset", s.requireAuth(http.HandlerFunc(s.handleServerReset)))
 	s.mux.Handle("GET /api/admin/settings", s.requireAuth(http.HandlerFunc(s.handleSettingsGet)))
 	s.mux.Handle("POST /api/admin/settings/commit", s.requireAuth(http.HandlerFunc(s.handleSettingsCommit)))
 
