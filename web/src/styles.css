@@ -543,3 +543,10 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .bk-row.pre-reset { background: color-mix(in srgb, var(--bad) 7%, transparent); }
 .trigger-badge.t-pre-reset { color: var(--bad); background: color-mix(in srgb, var(--bad) 16%, transparent); }
 .bk-note { font-size: 10.5px; color: var(--text-faint); margin-top: 3px; }
+/* Reset confirmation: the typed word gets real width and weight so it
+   reads as a deliberate act, not a tiny form field. (Recovered 2026-09-29
+   from the shipped v0.3.0 bundle; this source never landed in fbc4cad.) */
+.reset-confirm { margin-top: 12px; }
+.reset-confirm label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+.reset-word { width: 100%; max-width: 420px; font-size: 17px; letter-spacing: 3px; font-weight: 600; padding: 10px 14px; text-align: center; }
+.reset-word::placeholder { letter-spacing: 3px; opacity: .25; font-weight: 400; }

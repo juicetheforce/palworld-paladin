@@ -321,10 +321,10 @@ export function ServerAdmin() {
                 </div>
               )}
 
-              <div className="admin-delay" style={{ marginTop: 6 }}>
+              <div className="reset-confirm">
                 <label>Type <b>{RESET_WORD}</b> to confirm</label>
-                <input className="admin-input" style={{ maxWidth: 200 }} value={rsWord}
-                  autoComplete="off" spellCheck={false}
+                <input className="admin-input reset-word" value={rsWord}
+                  autoComplete="off" spellCheck={false} placeholder={RESET_WORD}
                   onChange={(e) => setRsWord(e.target.value.toUpperCase())} />
               </div>
               {rsErr && <div className="set-err">{rsErr}</div>}
