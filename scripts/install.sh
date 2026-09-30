@@ -53,6 +53,19 @@ die()  { echo "${c_red}[paladin] ERROR:${c_off} $*" >&2; exit 1; }
 # pipefail — the classic.)
 gen_pw() { head -c 512 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 20; }
 
+# First-run setup token: shown whenever no Paladin admin exists yet, so a
+# rerun of this installer is one of the ways to recover it. `setup-token`
+# prints ONLY the token on stdout; empty stdout means setup is complete. An
+# older binary without the subcommand prints usage to stderr and exits
+# non-zero, which `|| true` absorbs: the installer must never die here.
+print_setup_token() {
+  local tok
+  tok=$("$BIN" setup-token 2>/dev/null || true)
+  [ -n "$tok" ] || return 0
+  say "   Setup token:   $tok"
+  say "   (needed once, to create your Paladin login; 'sudo paladin setup-token' shows it again)"
+}
+
 # Interactive prompts must read the terminal, not stdin (we may be piped).
 ask() { # ask "Question" -> sets $REPLY_ANS to y/n
   local q="$1"
@@ -75,10 +88,15 @@ if [ -x "$BIN" ] && [ -f "$CONF" ]; then
   latest=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep -oP '"tag_name":\s*"\K[^"]+' || true)
   [ -n "$latest" ] || die "could not determine latest release (GitHub API). Try again later."
   say "Installed: $installed   Latest: $latest"
-  if [ "$installed" = "$latest" ]; then say "Already up to date. Nothing to do."; exit 0; fi
+  # --check stays read-only, so it never prints (or creates) a setup token.
+  if [ "$installed" = "$latest" ]; then
+    say "Already up to date. Nothing to do."
+    [ "$CHECK_ONLY" = 1 ] || print_setup_token
+    exit 0
+  fi
   [ "$CHECK_ONLY" = 1 ] && { say "--check: would update $installed -> $latest and restart $PALADIN_UNIT."; exit 0; }
   ask "Update Paladin $installed -> $latest and restart the web service? (The game server is NOT touched.)"
-  [ "$REPLY_ANS" = y ] || { say "Aborted."; exit 0; }
+  [ "$REPLY_ANS" = y ] || { say "Aborted."; print_setup_token; exit 0; }
   tmp=$(mktemp -d)
   curl -fsSL -o "$tmp/paladin.tar.gz" \
     "https://github.com/$REPO/releases/download/$latest/paladin_${latest}_linux_x86_64.tar.gz"
@@ -86,6 +104,7 @@ if [ -x "$BIN" ] && [ -f "$CONF" ]; then
   install -m 0755 "$tmp/paladin" "$BIN"; rm -rf "$tmp"
   systemctl restart "$PALADIN_UNIT"
   say "Updated to $latest and restarted. Done."
+  print_setup_token
   exit 0
 fi
 
@@ -421,10 +440,13 @@ echo
 say "======================================================"
 say " Paladin is installed and running."
 say "   Web UI:        http://${ip:-<this-host>}:$WEB_PORT"
+print_setup_token
 say "   Game server:   ${ip:-<this-host>}:${game_port:-8211}/udp"
 say "   Service user:  $SVC_USER"
 say "   Units:         $SERVER_UNIT, $PALADIN_UNIT"
 say "   Config:        $CONF"
 say "   REST password: stored in $CONF (and the game ini)"
-say " Open the Web UI to set your Paladin login."
+say " Open the Web UI to sign in. First time? Use the setup token shown above."
+say " The UI listens on all interfaces so LAN devices can reach it: keep port $WEB_PORT"
+say " off the internet (firewall, no port-forward)."
 say "======================================================"

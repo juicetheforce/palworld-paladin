@@ -68,7 +68,8 @@ internal/
   events/             in-process pub/sub, JSONL event log, SSE feed
   hostmetrics/        host CPU/RAM/temps/network from /proc and /sys
   webserv/            Paladin's HTTP API, auth (auth.json, PBKDF2, in-memory
-                      sessions), SSE, map, embedded frontend
+                      sessions, first-run setup token), SSE, map, embedded
+                      frontend
     dist/             BUILT frontend bundle — committed (see web/CLAUDE.md)
 data/palworld-settings.json   settings key list (embedded via data/data.go)
 web/                  React + TypeScript + Vite source

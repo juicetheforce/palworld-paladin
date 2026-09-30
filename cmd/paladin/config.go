@@ -100,6 +100,11 @@ func (c AppConfig) backupsDir() string { return c.dataPath("paladin-backups", de
 func (c AppConfig) journalDir() string { return c.dataPath("paladin-journal", defJournal) }
 func (c AppConfig) safetyDir() string  { return c.dataPath("paladin-safety", defSafetyHold) }
 func (c AppConfig) authFile() string   { return c.dataPath("paladin-config/auth.json", defAuthFile) }
+
+// setupTokenFile sits next to auth.json: the one-time first-run token.
+func (c AppConfig) setupTokenFile() string {
+	return filepath.Join(filepath.Dir(c.authFile()), "setup-token")
+}
 func (c AppConfig) memRestartFile() string {
 	return c.dataPath("paladin-config/memrestart.json", defMemRestart)
 }

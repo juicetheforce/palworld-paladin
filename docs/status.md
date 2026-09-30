@@ -41,7 +41,8 @@ here. Items marked **VERIFY** are unconfirmed. Check them against the repo
 - Settings editor: 120 keys, staged commits, gotchas, tooltips, reset to
   defaults.
 - Live map: actors from the game's `/game-data`, placed with the
-  palworld-coord transform, over an operator-supplied map image.
+  palworld-coord transform, over the bundled map image (or an
+  operator-supplied one).
 - Two-tier Players page with kick, ban, unban, and the ban list, plus a
   guilds table.
 - Backups with offline-tolerant restore and multi-select delete.
@@ -53,6 +54,9 @@ here. Items marked **VERIFY** are unconfirmed. Check them against the repo
 - Broadcast, force-save, and restart.
 - Mobile layout with a drawer nav.
 - Installer (fresh, adopt, takeover, `--check`, update) and uninstaller.
+- **Unreleased (on main):** first-run setup token (`sudo paladin
+  setup-token`, printed by the installer). Needs a release before fresh
+  installs get it.
 
 ## In flight
 
@@ -62,11 +66,6 @@ here. Items marked **VERIFY** are unconfirmed. Check them against the repo
 
 ## Backlog / known gaps
 
-- **The committed `dist` is ahead of `web/src`.** v0.3.0's bundle includes
-  the reset confirmation-field styling (`.reset-confirm`, `.reset-word`),
-  but that source never landed in `web/src` (commits `fbc4cad`/`9992bcb`). A
-  rebuild from `web/src` drops it. Recover or rewrite the source before the
-  next frontend change.
 - Startup recovery of interrupted cycles. `serve` never reads an unclosed
   maintenance journal; only the CLI `commit`/`restore` refuse to run over
   one, and `paladin recover` reports it.
@@ -75,8 +74,9 @@ here. Items marked **VERIFY** are unconfirmed. Check them against the repo
 - Installer update mode doesn't rewrite the sudoers grant, so grant changes
   never reach existing installs. It also doesn't check the tarball's
   `.sha256`.
-- First-run `POST /api/setup` needs no login until an admin exists, so
-  anyone who can reach the port can claim it in that window.
+- A password-reset command. Today a forgotten password means deleting
+  `<data_dir>/paladin-config/auth.json` and restarting Paladin (README,
+  "Forgot your password?").
 - CI doesn't run `gofmt -l` or check that `dist` matches `web/src`.
 - The CLI usage text still calls itself "trial CLI" (`cmd/paladin/main.go`,
   `usage()`).

@@ -135,11 +135,11 @@ async function j<T>(r: Response): Promise<T> {
 
 export const api = {
   session: () => fetch("/api/session").then(j<{ state: SessionState; username?: string }>),
-  setup: (password: string) =>
+  setup: (password: string, token: string) =>
     fetch("/api/setup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, token }),
     }).then(j<{ ok: boolean }>),
   login: (password: string) =>
     fetch("/api/login", {

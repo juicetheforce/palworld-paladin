@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -36,15 +37,17 @@ func (f fakeBackups) Count() (int, error) { return int(f), nil }
 
 func newTestServer(t *testing.T) (*Server, *AuthStore) {
 	t.Helper()
-	auth, err := LoadAuthStore(filepath.Join(t.TempDir(), "auth.json"))
+	dir := t.TempDir()
+	auth, err := LoadAuthStore(filepath.Join(dir, "auth.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	static := fstest.MapFS{"index.html": {Data: []byte("<html>paladin</html>")}}
 	s := New(Config{
 		Auth: auth, Sessions: NewSessionStore(0),
-		Status:  fakeStatus{info: &palapi.Info{ServerName: "Test", Description: "d", Version: "v1.0.1", WorldGUID: "G"}},
-		Backups: fakeBackups(2), Static: static,
+		SetupTokenPath: filepath.Join(dir, "setup-token"), // not created: tests that need it call EnsureSetupToken
+		Status:         fakeStatus{info: &palapi.Info{ServerName: "Test", Description: "d", Version: "v1.0.1", WorldGUID: "G"}},
+		Backups:        fakeBackups(2), Static: static,
 	})
 	return s, auth
 }
@@ -81,8 +84,13 @@ func TestSessionStateFlow(t *testing.T) {
 		t.Fatalf("fresh install must report needs_setup, got %v", body)
 	}
 
-	// Setup creates the admin and logs in (returns a session cookie).
-	resp = do(t, h, "POST", "/api/setup", `{"username":"admin","password":"hunter2hunter2"}`, nil)
+	// Setup (with the first-run token) creates the admin and logs in
+	// (returns a session cookie).
+	tok, _, err := EnsureSetupToken(s.setupToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp = do(t, h, "POST", "/api/setup", `{"username":"admin","password":"hunter2hunter2","token":"`+tok+`"}`, nil)
 	if resp.StatusCode != 200 {
 		t.Fatalf("setup failed: %d", resp.StatusCode)
 	}
@@ -102,6 +110,56 @@ func TestSessionStateFlow(t *testing.T) {
 	resp = do(t, h, "POST", "/api/setup", `{"username":"x","password":"yyyyyyyy"}`, nil)
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("second setup must 409, got %d", resp.StatusCode)
+	}
+}
+
+// Regression: first-run POST /api/setup was unauthenticated, so on a fresh
+// install (UI on 0.0.0.0) anyone on the network could claim the admin
+// account before the owner did (audit 2026-09-29). Setup now needs the
+// one-time token from `sudo paladin setup-token`.
+func TestSetupRequiresToken(t *testing.T) {
+	s, auth := newTestServer(t)
+	h := s.Handler()
+	setup := func(tokenField string) *http.Response {
+		return do(t, h, "POST", "/api/setup", `{"password":"hunter2hunter2"`+tokenField+`}`, nil)
+	}
+
+	// No token file on the server yet: refused, and it says what to run.
+	if resp := setup(`,"token":"anything"`); resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("no token file must 503, got %d", resp.StatusCode)
+	}
+
+	tok, _, err := EnsureSetupToken(s.setupToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Missing token: refused.
+	if resp := setup(``); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("missing token must 401, got %d", resp.StatusCode)
+	}
+	// Wrong token: refused.
+	if resp := setup(`,"token":"0000000000000000000000000000000"`); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("wrong token must 401, got %d", resp.StatusCode)
+	}
+	if !auth.NeedsSetup() {
+		t.Fatal("a refused setup must not create an admin")
+	}
+
+	// Right token (pasted with stray whitespace): accepted, logged in.
+	resp := setup(`,"token":"  ` + tok + `\n"`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("right token must be accepted, got %d", resp.StatusCode)
+	}
+	if sessionCookie(resp) == nil {
+		t.Fatal("setup must issue a session cookie")
+	}
+	// The token is deleted once the admin exists.
+	if _, err := os.Stat(s.setupToken); !os.IsNotExist(err) {
+		t.Fatalf("token file must be deleted after setup, stat err=%v", err)
+	}
+	// And setup is closed for good, token or not.
+	if resp := setup(`,"token":"` + tok + `"`); resp.StatusCode != http.StatusConflict {
+		t.Fatalf("setup after an admin exists must 409, got %d", resp.StatusCode)
 	}
 }
 

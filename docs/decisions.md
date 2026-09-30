@@ -101,7 +101,42 @@ release builds and deploys need no Node toolchain.
 **Onboarding is done by the installer.** Detection, fresh install, adopt and
 takeover all live in `scripts/install.sh`. There is no web onboarding wizard.
 The web UI's only onboarding step is the first-run screen that sets the admin
-password (`POST /api/setup`, accepted only while no admin exists).
+password (`POST /api/setup`, accepted only while no admin exists, and only
+with the setup token; see below).
+
+**First-run setup token.** Because the UI listens on all interfaces, first
+run used to let whoever reached the port first claim the admin account
+(audit 2026-09-29). Now setup needs a one-time token that anyone with sudo on
+the box can get, and nobody else can:
+- **Where:** `<data_dir>/paladin-config/setup-token`, next to `auth.json`
+  (fresh installs: `/home/palworld/paladin-config/setup-token`). Mode 0600,
+  owned by the service account. 128 bits from `crypto/rand`, as 32 hex chars.
+- **The file is the source of truth.** `serve` creates it at startup while no
+  admin exists; `paladin setup-token` creates it if missing. Creation uses
+  `O_EXCL`, so if both race, the loser reads the winner's token. Every setup
+  request re-reads the file, so a token created after Paladin started works
+  without a restart.
+- **Lifetime:** it never expires while no admin exists, and it's deleted when
+  the first admin is created (and tidied by `serve` or the CLI if one is
+  left over).
+- **Check:** constant-time compare after trimming whitespace. Missing and
+  wrong tokens get 401 with distinct messages; no token file gets 503. All
+  three say to run `sudo paladin setup-token`. The existing 409 "already
+  configured" check runs first, so installs with an admin see no change.
+- **`paladin setup-token`** (run with sudo): with no admin, prints the token.
+  With an admin, says setup is complete and prints nothing secret. Its
+  stdout is the token and nothing else, and every human message goes to
+  stderr, because the installer captures stdout. When run as root and it
+  creates the file, it chowns it to the owner of `data_dir` (detected, not
+  assumed) so the service account can read it.
+- **Installer:** prints the token next to the Web UI URL whenever no admin
+  exists: the fresh/adopt summary, plus every update-mode rerun (up to date,
+  aborted, or updated). `--check` stays read-only and never creates one. An
+  older binary without the subcommand yields empty stdout, so the installer
+  prints nothing instead of failing.
+- **Not built:** a password-reset command. Today a forgotten password means
+  deleting `auth.json` and restarting Paladin, which reopens first-run setup
+  with a new token (documented in the README).
 
 **Installer model.**
 - One curl-pipe command both installs and updates.
@@ -125,12 +160,14 @@ Passwords are hashed with stdlib PBKDF2-HMAC-SHA256
 shape means RBAC can be added later without a rewrite. Sessions are held in
 memory with a 12-hour TTL, so restarting Paladin logs everyone out.
 
-**Map: live `/game-data` plus an operator-supplied image.** The live map
-plots actors from the game's `/game-data` endpoint, which the installer's
-server unit enables with `-enable-gamedata-api`. Coordinates use the
-palworld-coord transform. Paladin bundles no map artwork (it is ©
-Pocketpair); the operator drops an image at the configured path, and without
-one the map still plots actors.
+**Map: live `/game-data` over a map image.** The live map plots actors from
+the game's `/game-data` endpoint, which the installer's server unit enables
+with `-enable-gamedata-api`. Coordinates use the palworld-coord transform.
+*(Corrected 2026-09-29: an earlier version of this entry said Paladin bundles
+no map artwork. It does.)* The underlay is an operator-supplied image at
+`<data_dir>/paladin-config/worldmap.png` if present, served at
+`/api/map-image`; otherwise it's the bundled `worldmap.jpg` (© Pocketpair,
+stitched from PST's tiles, credited in the README).
 
 **No Metrics page.** Host and game metrics live on the Dashboard. There is
 no separate Metrics page and no server-side metrics history.

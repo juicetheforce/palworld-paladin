@@ -49,6 +49,9 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .btn:hover { filter: brightness(1.08); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .auth-err { color: var(--bad); font-size: 13px; margin-bottom: 14px; min-height: 18px; }
+.field input.setup-token { font-family: ui-monospace, monospace; font-size: 14px; letter-spacing: 0.5px; }
+.auth-hint { font-size: 12px; color: var(--text-faint); margin-top: 6px; line-height: 1.45; }
+.auth-hint code { font-family: ui-monospace, monospace; color: var(--text-dim); }
 
 /* ---- app shell ---- */
 .shell { display: grid; grid-template-columns: var(--nav-w) 1fr; min-height: 100vh; }

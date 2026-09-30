@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -39,6 +41,7 @@ type HostProvider interface {
 type Server struct {
 	auth           *AuthStore
 	sessions       *SessionStore
+	setupToken     string // path of the first-run setup token file
 	status         StatusProvider
 	backups        BackupCounter
 	host           HostProvider
@@ -80,6 +83,7 @@ type Server struct {
 type Config struct {
 	Auth           *AuthStore
 	Sessions       *SessionStore
+	SetupTokenPath string // first-run setup token file; empty = setup always refused
 	Status         StatusProvider
 	Backups        BackupCounter
 	Host           HostProvider
@@ -113,7 +117,7 @@ type Config struct {
 
 func New(cfg Config) *Server {
 	s := &Server{
-		auth: cfg.Auth, sessions: cfg.Sessions, status: cfg.Status,
+		auth: cfg.Auth, sessions: cfg.Sessions, setupToken: cfg.SetupTokenPath, status: cfg.Status,
 		backups: cfg.Backups, host: cfg.Host, players: cfg.Players,
 		banList: cfg.BanList, lifecycle: cfg.Lifecycle,
 		broadcaster: cfg.Broadcaster, backupMgr: cfg.BackupMgr, readiness: cfg.Readiness,
@@ -214,6 +218,7 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, tok string) {
 type credsReq struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Token    string `json:"token"` // first-run setup token (setup only)
 }
 
 // handleSetup creates the first admin credential (only when none exists).
@@ -227,12 +232,37 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
 		return
 	}
+	// The setup token proves the caller has sudo on the box (see
+	// setuptoken.go for why). Checked before anything is written.
+	switch err := CheckSetupToken(s.setupToken, req.Token); {
+	case err == nil:
+	case errors.Is(err, ErrSetupTokenMissing):
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Setup token required. Run `sudo paladin setup-token` on the server to get it."})
+		return
+	case errors.Is(err, ErrSetupTokenWrong):
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "That setup token is wrong. Run `sudo paladin setup-token` on the server to see it."})
+		return
+	case errors.Is(err, ErrNoSetupToken):
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "No setup token exists yet. Run `sudo paladin setup-token` on the server to create one."})
+		return
+	default:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Could not read the setup token: " + err.Error()})
+		return
+	}
 	if req.Username == "" {
 		req.Username = "admin"
 	}
 	if err := s.auth.SetAdminPassword(req.Username, req.Password); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
+	}
+	// The admin exists now, so the token can never be used again even if
+	// this delete fails; still, say so rather than leave it silently.
+	if err := RemoveSetupToken(s.setupToken); err != nil {
+		fmt.Fprintln(os.Stderr, "warning:", err)
+		if s.hub != nil {
+			s.hub.Error("setup", "Admin created, but the old setup token file could not be deleted: "+err.Error())
+		}
 	}
 	s.issueSession(w, req.Username)
 }

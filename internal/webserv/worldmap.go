@@ -70,9 +70,10 @@ func (s *Server) handleMapActors(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"available": true, "actors": out})
 }
 
-// handleMapImage serves the operator-supplied map artwork, if present.
-// Paladin deliberately bundles no game artwork (it is © Pocketpair); drop
-// any map image at the configured path and it underlays the live radar.
+// handleMapImage serves the operator-supplied map artwork, if present. An
+// image dropped at the configured path takes precedence; otherwise the
+// frontend falls back to the bundled /worldmap.jpg (© Pocketpair, stitched
+// from PST's map tiles; credited in the README).
 func (s *Server) handleMapImage(w http.ResponseWriter, r *http.Request) {
 	if s.mapImagePath == "" {
 		http.NotFound(w, r)

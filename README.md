@@ -79,6 +79,71 @@ touching anything. I'd recommend that on any box you care about.
 **Updating Paladin** is the same command. It notices Paladin is installed,
 compares versions, and swaps the binary. Your server isn't touched.
 
+## First login: your setup token
+
+The first time you open Paladin in a browser, it asks you to create a
+password. Before it lets you, it also asks for a **setup token**: a one-time
+code that proves you're the person who installed it. Without it, anyone else
+on your network who happened to open the page first could create the admin
+account before you did.
+
+**Where to find it:** the installer prints it at the end, right under the
+Web UI address:
+
+```
+[paladin]    Web UI:        http://192.168.1.50:8080
+[paladin]    Setup token:   (a 32-character code of letters and numbers)
+```
+
+Copy it into the "Setup token" box, choose your password, and you're in.
+
+**If you missed it:** run this on the server:
+
+```bash
+sudo paladin setup-token
+```
+
+If that says `command not found` (some distros don't let `sudo` see
+`/usr/local/bin`), use the full path instead:
+
+```bash
+sudo /usr/local/bin/paladin setup-token
+```
+
+Rerunning the installer also prints it. The token stays valid until you
+create your admin account, however long that takes.
+
+**After setup:** the token is deleted, and you won't need it again. Running
+`sudo paladin setup-token` afterwards just tells you setup is already
+complete.
+
+**Forgot your password?** There's no reset button or command yet. What works
+today is starting the first-run setup over, which keeps your server, world,
+settings and backups exactly as they are:
+
+1. Find where Paladin keeps its data (on a fresh install it's
+   `/home/palworld`):
+
+   ```bash
+   sudo grep data_dir /etc/paladin/config.json
+   ```
+
+2. Delete the login file inside it, then restart Paladin:
+
+   ```bash
+   sudo rm /home/palworld/paladin-config/auth.json   # use your data_dir from step 1
+   sudo systemctl restart paladin
+   ```
+
+3. Get a fresh setup token with `sudo paladin setup-token`, open the web UI,
+   and create a new password.
+
+**Keep it off the internet.** Paladin listens on all of the server's network
+addresses so your phone and other devices on your home network can reach it.
+That also means you should keep its port (8080 by default) away from the
+internet: don't port-forward it on your router, and if the server has a
+public IP, block the port in its firewall.
+
 ## Requirements
 
 - Linux, x86_64, systemd (built and tested on Ubuntu 24.04)

@@ -30,6 +30,7 @@ export function App() {
 
 function AuthScreen({ mode, onDone }: { mode: "setup" | "login"; onDone: () => void }) {
   const [password, setPassword] = useState("");
+  const [token, setToken] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -40,7 +41,7 @@ function AuthScreen({ mode, onDone }: { mode: "setup" | "login"; onDone: () => v
     setBusy(true);
     setErr("");
     try {
-      if (mode === "setup") await api.setup(password);
+      if (mode === "setup") await api.setup(password, token.trim());
       else await api.login(password);
       onDone();
     } catch (e) {
@@ -58,19 +59,40 @@ function AuthScreen({ mode, onDone }: { mode: "setup" | "login"; onDone: () => v
             ? "First run — set a password to protect this panel."
             : "Enter your password to continue."}
         </div>
+        {mode === "setup" && (
+          // First-run setup token: proves whoever sets the password has sudo
+          // on the server (otherwise anyone on the LAN could claim it first).
+          <div className="field">
+            <label>Setup token</label>
+            <input
+              className="setup-token"
+              type="text"
+              value={token}
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(e) => setToken(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+            />
+            <div className="auth-hint">
+              It was printed at the end of the installer. Missed it? Run <code>sudo paladin setup-token</code> on the server.
+            </div>
+          </div>
+        )}
         <div className="field">
           <label>{mode === "setup" ? "New password" : "Password"}</label>
           <input
             type="password"
             value={password}
-            autoFocus
+            autoFocus={mode !== "setup"}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
             autoComplete={mode === "setup" ? "new-password" : "current-password"}
           />
         </div>
         <div className="auth-err">{err}</div>
-        <button className="btn" onClick={submit} disabled={busy || password.length < 1}>
+        <button className="btn" onClick={submit}
+          disabled={busy || password.length < 1 || (mode === "setup" && token.trim().length < 1)}>
           {mode === "setup" ? "Set password & enter" : "Sign in"}
         </button>
       </div>

@@ -100,6 +100,8 @@ func main() {
 		err = cmdRecover(args)
 	case "serve":
 		err = cmdServe(args)
+	case "setup-token":
+		err = cmdSetupToken(args)
 	case "version":
 		fmt.Println("paladin", version)
 	default:
@@ -119,7 +121,8 @@ func usage() {
   commit --set Key=Value ...     staged settings commit-and-restart cycle
   restore --backup <id>          orchestrated world restore cycle
   recover                        report a crash-interrupted cycle, if any
-  serve [--addr host:port]       run the web UI (default 127.0.0.1:8080)`)
+  serve [--addr host:port]       run the web UI (default 127.0.0.1:8080)
+  setup-token                    print the first-run setup token (run with sudo)`)
 }
 
 // ---- wiring -----------------------------------------------------------------
@@ -541,6 +544,7 @@ func cmdServe(args []string) error {
 	if err != nil {
 		return err
 	}
+	prepareSetupToken(auth, cfg.setupTokenFile())
 	sampler := hostmetrics.NewSampler(3 * time.Second)
 	go sampler.Run(context.Background())
 
@@ -650,18 +654,19 @@ func cmdServe(args []string) error {
 	updateRunner := makeUpdateRunner(d, serveEngine, hub)
 
 	srv := webserv.New(webserv.Config{
-		Auth:        auth,
-		Sessions:    webserv.NewSessionStore(12 * time.Hour),
-		Status:      d.api,
-		Backups:     d.mgr,
-		Host:        sampler,
-		Players:     d.api,
-		BanList:     func() ([]palapi.BanEntry, error) { return palapi.ReadBanList(banlistPath) },
-		Lifecycle:   d.unit,
-		Broadcaster: d.api,
-		BackupMgr:   d.mgr,
-		Readiness:   d.api,
-		Update:      updateRunner,
+		Auth:           auth,
+		Sessions:       webserv.NewSessionStore(12 * time.Hour),
+		SetupTokenPath: cfg.setupTokenFile(),
+		Status:         d.api,
+		Backups:        d.mgr,
+		Host:           sampler,
+		Players:        d.api,
+		BanList:        func() ([]palapi.BanEntry, error) { return palapi.ReadBanList(banlistPath) },
+		Lifecycle:      d.unit,
+		Broadcaster:    d.api,
+		BackupMgr:      d.mgr,
+		Readiness:      d.api,
+		Update:         updateRunner,
 		LocalBuild: func() (string, error) {
 			return steam.LocalBuildID(installDirFromWorld(d.worldDir), steam.PalworldAppID)
 		},
@@ -717,7 +722,7 @@ func cmdServe(args []string) error {
 	})
 	recordAction = srv.RecordAction
 	if auth.NeedsSetup() {
-		fmt.Println("First run: open the web UI to create your admin password.")
+		fmt.Println("First run: get the setup token with `sudo paladin setup-token`, then open the web UI to create your admin password.")
 	}
 	fmt.Printf("Paladin web UI on http://%s  (LAN/localhost only — do not expose publicly)\n", *addr)
 	fmt.Printf("  subsystems: live-events=on log-tail=%q host-metrics=on\n", logPath)
