@@ -115,7 +115,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, `paladin `+version+` — Palworld server maintenance (trial CLI)
+	fmt.Fprintln(os.Stderr, `paladin `+version+` — Palworld server admin panel and maintenance CLI
   status                         server, unit, and metrics at a glance
   backup create|list|prune       manage the backup catalog
   commit --set Key=Value ...     staged settings commit-and-restart cycle

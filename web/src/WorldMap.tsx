@@ -138,7 +138,7 @@ export function WorldMap() {
         Only actors in loaded areas appear — the server simulates the world
         around connected players, so wild Pals show up near people, not
         across the whole island.
-        {!imgSrc && <> No map artwork found: place an image at <code>/home/palworld/paladin-config/worldmap.png</code> to underlay the radar.</>}
+        {!imgSrc && <> No map artwork found: place an image named <code>worldmap.png</code> in the <code>paladin-config</code> folder inside Paladin's data directory (<code>data_dir</code> in its config) to underlay the radar.</>}
       </div>
     </>
   );

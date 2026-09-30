@@ -78,14 +78,18 @@ here. Items marked **VERIFY** are unconfirmed. Check them against the repo
   `<data_dir>/paladin-config/auth.json` and restarting Paladin (README,
   "Forgot your password?").
 - CI doesn't run `gofmt -l` or check that `dist` matches `web/src`.
-- The CLI usage text still calls itself "trial CLI" (`cmd/paladin/main.go`,
-  `usage()`).
 - Backups have no automatic retention; pruning is manual (web multi-select
   delete, or `paladin backup prune --keep N`).
 - Map touch gestures (pan/pinch) on mobile.
 
 ## Open questions
 
+- `sudo paladin setup-token` fails with "command not found" on RHEL-family
+  distros: their default sudo `secure_path` is `/sbin:/bin:/usr/sbin:/usr/bin`
+  (checked in the AlmaLinux 8/9/10 sudo packages), and the binary lives in
+  `/usr/local/bin`. Fedora 44 and Ubuntu 24.04 include `/usr/local/bin`, so
+  they're fine. The README already gives the full-path fallback. Fix
+  proposed (full path as the primary command); awaiting Ryan.
 - Should the server unit pass `-log`? DESIGN rev 17 says both flags were
   added to the unit, but the installer's unit passes only
   `-enable-gamedata-api` (`scripts/install.sh`, `write_server_unit`). Rev 17
