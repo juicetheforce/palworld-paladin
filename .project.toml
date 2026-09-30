@@ -1,0 +1,7 @@
+name = "Paladin"
+summary = "Self-hosted web admin panel for a single Palworld dedicated server on Linux."
+stage = "live"
+next = "Recover the reset confirmation-field source so web/src matches the committed dist."
+category = "Gaming"
+paused = false
+focus = false
