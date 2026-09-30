@@ -166,7 +166,7 @@ func (e *Engine) run(ctx context.Context, id string, p Payload) Outcome {
 		e.emit(id, p, EventStepOK, StepStop, "skipped: server already stopped")
 	}
 
-	// ---- ANNOUNCE: countdown broadcasts ----
+	// ---- ANNOUNCE: optional broadcasts (each with its own wait) ----
 	if err := skippable(skipLive, func() error {
 		return e.step(ctx, id, p, StepAnnounce, func(c context.Context) error {
 			for _, a := range e.runOpts.Announcements {
@@ -213,8 +213,9 @@ func (e *Engine) run(ctx context.Context, id string, p Payload) Outcome {
 			if err == nil {
 				return nil
 			}
-			// Grace window missed → the §6.9 two-option dialog. No timeout
-			// default, no auto-kill: nil decider means Cancel.
+			// Grace window missed → ask StopDecider (CLI: operator dialog;
+			// serve: automatic force-kill). The engine itself never kills
+			// on its own: nil decider means Cancel.
 			e.emit(id, p, EventAwaitingOp, StepStop,
 				"server did not stop in grace window; awaiting operator decision")
 			decision := DecisionCancel

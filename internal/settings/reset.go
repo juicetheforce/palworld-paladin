@@ -9,15 +9,15 @@ import (
 // at all. Resetting RESTAPIEnabled or AdminPassword would leave the tool
 // locked out of the very server it just rebuilt.
 var preservedOnReset = map[string]bool{
-	"AdminPassword":  true,
-	"ServerPassword": true,
-	"RESTAPIEnabled": true,
-	"RESTAPIPort":    true,
-	"RCONEnabled":    true,
-	"RCONPort":       true,
-	"PublicPort":     true,
-	"PublicIP":       true,
-	"ServerName":     true,
+	"AdminPassword":     true,
+	"ServerPassword":    true,
+	"RESTAPIEnabled":    true,
+	"RESTAPIPort":       true,
+	"RCONEnabled":       true,
+	"RCONPort":          true,
+	"PublicPort":        true,
+	"PublicIP":          true,
+	"ServerName":        true,
 	"ServerDescription": true,
 }
 

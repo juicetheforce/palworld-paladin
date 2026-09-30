@@ -59,8 +59,8 @@ type ResetPayload struct {
 
 	oldGUID     string    // world GUID being wiped (informational)
 	startedAt   time.Time // cycle start; world files must postdate it
-	asidePath   string // renamed-aside live world (rollback anchor)
-	backupEntry *Entry // catalogued pre-reset backup
+	asidePath   string    // renamed-aside live world (rollback anchor)
+	backupEntry *Entry    // catalogued pre-reset backup
 }
 
 var _ maintain.Payload = (*ResetPayload)(nil)

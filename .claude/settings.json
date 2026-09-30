@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(go vet:*)",
+      "Bash(gofmt:*)",
+      "Bash(npm run build)",
+      "Bash(npm ci)",
+      "Bash(bash -n:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git tag --list:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(git push origin main)"
+    ],
+    "deny": [
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(rsync:*)",
+      "Bash(sudo:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push origin v*)",
+      "Bash(git push origin refs/tags/*)",
+      "Bash(git push --tags:*)",
+      "Bash(git tag -a:*)",
+      "Bash(git tag v*)",
+      "Bash(gh release:*)",
+      "Bash(./scripts/install.sh:*)",
+      "Bash(bash scripts/install.sh:*)",
+      "Bash(./scripts/uninstall.sh:*)",
+      "Bash(bash scripts/uninstall.sh:*)"
+    ]
+  }
+}

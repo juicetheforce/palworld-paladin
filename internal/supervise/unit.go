@@ -11,8 +11,9 @@ import (
 
 // Runner executes a command and returns its combined output. It is the
 // seam that (a) makes this package fully testable with a fake, and (b)
-// keeps the scoped-grant mechanism (sudoers vs polkit, DESIGN.md §11)
-// swappable: elevation changes how commands run, not this package.
+// keeps the elevation mechanism out of this package. Elevation is a scoped
+// sudoers grant (SudoRunner below; the grant is written by
+// scripts/install.sh write_sudoers).
 type Runner interface {
 	Run(ctx context.Context, name string, args ...string) (output string, err error)
 }
@@ -27,9 +28,10 @@ func (ExecRunner) Run(ctx context.Context, name string, args ...string) (string,
 
 // SudoRunner prefixes every command with "sudo -n" (non-interactive).
 // Model A (DESIGN.md §5.2): Paladin runs AS the unprivileged service
-// account and holds ONE narrowly-scoped sudoers grant permitting exactly
-// `systemctl start|stop|restart|kill|show|is-active <its unit>` and
-// nothing else. All file operations run natively as the owner (no sudo,
+// account and holds ONE narrowly-scoped sudoers grant (install.sh
+// write_sudoers) permitting `systemctl start|stop|restart|kill|show|
+// is-active|status <its unit>` plus `systemctl kill -s SIGKILL <its unit>`,
+// and nothing else. All file operations run natively as the owner (no sudo,
 // no chown). This is the single privilege exception in the design.
 type SudoRunner struct{}
 
@@ -90,9 +92,10 @@ func (u *UnitController) Restart(ctx context.Context) error {
 	return err
 }
 
-// Kill sends SIGKILL to all unit processes. ONLY for the user-initiated
-// force-kill path of the STOP escalation dialog (§6.9) — never called
-// automatically by anything in this codebase.
+// Kill sends SIGKILL to all unit processes. Used only when a stop has
+// missed its grace window: the CLI asks the operator first; web-triggered
+// cycles escalate automatically (see the StopDecider in cmd/paladin, and
+// docs/decisions.md). Nothing else calls it.
 func (u *UnitController) Kill(ctx context.Context) error {
 	_, err := u.systemctl(ctx, "kill", "-s", "SIGKILL", u.Unit)
 	return err

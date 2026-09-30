@@ -1,5 +1,12 @@
 # Paladin — Project Scope & Design
 
+> **FROZEN — historical record.** This is the original design document, as
+> it stood at revision 17 (with the rev 18/18a sidecar addenda below). It
+> is no longer maintained, and the body is intentionally left unedited.
+> Where it conflicts with the code, the **code** is current, together with
+> [`docs/decisions.md`](decisions.md) (why things are the way they are) and
+> [`docs/status.md`](status.md) (what's shipped, open, and in the backlog).
+
 > Paladin: an open-source, self-hosted admin panel for a single Palworld
 > dedicated server. (Working name; repo/module namespace likely `palworld-paladin`.)
 

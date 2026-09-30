@@ -12,8 +12,9 @@ import (
 )
 
 // AuthStore holds the single admin credential (DESIGN.md §6.6: one admin
-// for v1, but stored as a users table shape so RBAC is additive later).
-// Persisted as JSON; the password is bcrypt-hashed, never stored plain.
+// for v1, but stored as a users list so RBAC is additive later).
+// Persisted as JSON; the password is PBKDF2-hashed (passwordhash.go),
+// never stored plain.
 //
 // The web login is decoupled from any OS user and from the game's
 // AdminPassword — a forgotten web password is a tool-level reset, never an
@@ -76,7 +77,7 @@ func (s *AuthStore) SetAdminPassword(username, password string) error {
 }
 
 // Verify checks a username/password against the stored hash. Constant-time
-// username compare + bcrypt (itself constant-time) resist timing probes.
+// username compare + constant-time PBKDF2 hash compare resist timing probes.
 func (s *AuthStore) Verify(username, password string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

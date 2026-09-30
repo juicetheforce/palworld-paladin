@@ -139,14 +139,15 @@ type Config struct {
 	// nil means TolerateStopped cycles abort on an unreachable server.
 	UnitActive func(ctx context.Context) (bool, error)
 	// StopDecider is consulted only when the server misses StopGrace.
-	// In the app this blocks on the two-option UI dialog; nil is treated
-	// as DecisionCancel (the safe default — never kill without a human).
+	// The CLI asks the operator (force kill or cancel); `serve` always
+	// returns DecisionForceKill, because web cycles are headless (see
+	// cmd/paladin). nil is treated as DecisionCancel.
 	StopDecider func(ctx context.Context) (StopDecision, error)
 
 	// Timeouts. Zero values take the defaults noted.
 	PreCheckTimeout time.Duration // 15s — server-health probe
 	SaveTimeout     time.Duration // 60s
-	StopGrace       time.Duration // 90s — before the escalation dialog
+	StopGrace       time.Duration // 90s — before StopDecider is consulted
 	KillGrace       time.Duration // 15s — after a user-ordered SIGKILL
 	StartTimeout    time.Duration // 300s — genuine REST readiness
 }

@@ -1,15 +1,19 @@
-// Command paladin — trial CLI wiring every internal package into live
-// maintenance cycles against a real server. This is the assembly step
-// before the web UI: webserv will call the same wiring.
+// Command paladin — wires every internal package together. `paladin serve`
+// is the production entrypoint (the web UI + API; the installer's
+// paladin.service runs it). The other subcommands are a maintenance CLI
+// that drives the same engine from a terminal.
 //
 // RUN AS THE SERVICE ACCOUNT (Model A, DESIGN.md §5.2): all file work
-// happens natively as the palworld user (no sudo, no chown), and the ONE
+// happens natively as the service user (no sudo, no chown), and the ONE
 // privileged operation — systemctl on the server's unit — goes through a
-// narrowly-scoped sudoers grant (deploy/grants/palworld-paladin.sudoers).
-// Run it as:  sudo -u palworld ./paladin <cmd>   (with the grant installed)
+// narrowly-scoped sudoers grant written by scripts/install.sh
+// (write_sudoers, ~line 197) to /etc/sudoers.d/paladin.
+// Run it as:  sudo -u <service user> ./paladin <cmd>   (with the grant installed)
 //
-// Usage (testbox defaults built in):
+// Usage (built-in defaults assume a /home/palworld layout; the installer's
+// config.json overrides them):
 //
+//	paladin serve
 //	paladin status
 //	paladin backup create | list | prune --keep N
 //	paladin commit --set ExpRate=2 --set bEnableVoiceChat=true [--countdown 30]
@@ -48,7 +52,8 @@ import (
 // version is stamped by release builds via -ldflags "-X main.version=vX.Y.Z".
 var version = "dev"
 
-// defaults matching deploy/testbox/bootstrap-palworld-testbox.sh
+// Built-in defaults: the original test-box layout. Real installs override
+// these through config.json, written by scripts/install.sh.
 const (
 	defUnit       = "palserver.service"
 	defAPIURL     = "http://127.0.0.1:8212"
@@ -158,8 +163,9 @@ func build(cfg AppConfig) (*deps, error) {
 	return d, nil
 }
 
-// noopSusp: no daemon supervisor exists yet in the trial CLI; the systemd
-// unit's Restart=on-failure ignores deliberate stops, so cycles are safe.
+// noopSusp: the CLI subcommands run without the daemon's supervisor (only
+// `serve` has one); the systemd unit's Restart=on-failure ignores
+// deliberate stops, so CLI cycles are safe.
 type noopSusp struct{}
 
 func (noopSusp) Suspend() {}
