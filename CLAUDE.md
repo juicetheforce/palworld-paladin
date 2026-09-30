@@ -47,6 +47,10 @@ Any change that weakens either of these is a regression. Flag it.
   `palworld-test` or the live server. When something must run there, give
   Ryan a complete, copy-paste command block with host-by-host steps in order.
   Those blocks cover only the VM and live-box steps; the laptop side is yours.
+  - One exception: `scripts/deploy-test.sh` (it deploys over ssh to Ryan's
+    disposable test VMs). Run it only when a prompt explicitly asks you to,
+    and only against hosts listed in `scripts/test-hosts`. Otherwise give
+    Ryan the command. Never the live box, and no direct ssh/scp.
 
 ## Layout
 
@@ -74,7 +78,9 @@ internal/
 data/palworld-settings.json   settings key list (embedded via data/data.go)
 web/                  React + TypeScript + Vite source
 scripts/              install.sh (detection, fresh install, adopt, takeover,
-                      update, sudoers grant), uninstall.sh, release.sh
+                      update, sudoers grant), uninstall.sh, release.sh,
+                      deploy-test.sh (test VMs), test-install-archive.sh
+  lib/build.sh        build + package step shared by release/deploy-test
 docs/                 see "Context docs" below
 .github/workflows/    CI: go vet, build, test, settings JSON check
 ```
@@ -88,7 +94,9 @@ go build ./... && go vet ./... && go test ./...
 gofmt -l .                         # must print nothing
 cd web && npm ci && npm run build  # rebuilds internal/webserv/dist
 go build -o paladin ./cmd/paladin  # local binary; reports version "dev"
-bash -n scripts/install.sh scripts/uninstall.sh   # syntax check
+bash -n scripts/*.sh scripts/lib/*.sh             # syntax check
+scripts/test-install-archive.sh    # laptop check of install.sh --local-archive
+scripts/deploy-test.sh <host> [--fresh|--update]  # test VM via the real installer (see docs/testing.md)
 ```
 
 Release builds use `scripts/release.sh vX.Y.Z`. Ryan runs these; use
@@ -144,6 +152,8 @@ Release builds use `scripts/release.sh vX.Y.Z`. Ryan runs these; use
 - `docs/decisions.md`: why things are the way they are. Read it before
   touching architecture, the installer, supervision, or the settings
   pipeline. Add an entry when a task makes a new decision.
+- `docs/testing.md`: test VMs, `deploy-test.sh`, snapshot prep, and
+  hardware checklists.
 - `docs/DESIGN.md`: the original design document, frozen at rev 17 as a
   historical record. Don't edit its body. Where it conflicts with the code,
   `decisions.md` or `status.md`, those win.

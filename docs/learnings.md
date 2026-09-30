@@ -97,5 +97,8 @@ happened. Every failure must reach the user.
 - **Real hardware finds what tests don't.** A feature isn't done until it has
   been verified against a real server. Say plainly what was verified and
   what wasn't.
-- **`dev` is a correct version.** Hand-built binaries report `dev`. If the
-  test box ever shows a version number, something is wrong.
+- **`dev` is a correct version.** A plain `go build` reports `dev`;
+  `scripts/deploy-test.sh` builds report `dev-<commit>[-dirty]`. Both are
+  dev builds (no update indicator; the installer never treats them as up to
+  date). If a test VM ever shows a release version number, something is
+  wrong.

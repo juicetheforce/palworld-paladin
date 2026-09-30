@@ -148,6 +148,21 @@ the box can get, and nobody else can:
 - `uninstall.sh` keeps the game server by default. Deleting world data sits
   behind a type-DELETE gate.
 
+**Testing on VMs goes through the real installer.** `scripts/deploy-test.sh
+<host> [--fresh|--update]` builds on the laptop with the same packaging code
+as `release.sh` (`scripts/lib/build.sh`), then runs `install.sh
+--local-archive` on a disposable VM, so fresh-install and update paths are
+tested exactly as users run them. Guards and conventions:
+- It refuses any host not listed in the gitignored `scripts/test-hosts`.
+- Builds are stamped `dev-<commit>[-dirty]`, and count as dev builds
+  everywhere: no update indicator, and the installer never considers them
+  "already up to date".
+- `install.sh --local-archive` verifies the tarball against a `.sha256`
+  beside it (comparing hashes directly, not via `sha256sum -c`), before
+  anything on the machine changes.
+- Claude runs it only when a prompt asks.
+- See `docs/testing.md`.
+
 **Update indicator.** A lazy GitHub check, cached for 12 hours and run only
 while the UI is being polled. It is suppressed on `dev` builds and links to
 `releases/latest`.

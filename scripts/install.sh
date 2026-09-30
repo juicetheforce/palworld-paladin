@@ -4,11 +4,16 @@
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/juicetheforce/palworld-paladin/main/scripts/install.sh | sudo bash
-#   sudo ./install.sh [--check] [--local] [--port N]
+#   sudo ./install.sh [--check] [--local | --local-archive FILE] [--port N]
 #
 #   --check   Detect and report only. Changes NOTHING. Run this first.
 #   --local   Install the ./paladin binary from the current directory
 #             instead of downloading a GitHub release (for dev builds).
+#   --local-archive FILE
+#             Install from a release-format tarball on disk instead of
+#             downloading one; verified against FILE.sha256 if it sits
+#             beside it. Used by scripts/deploy-test.sh; works in both
+#             install and update mode.
 #   --port N  Web UI port (default 8080).
 #
 # Scenarios handled:
@@ -33,15 +38,22 @@ SUDOERS=/etc/sudoers.d/paladin
 PALADIN_UNIT=paladin.service
 SERVER_UNIT=palserver.service
 
-CHECK_ONLY=0; LOCAL_BIN=0; WEB_PORT=8080
+CHECK_ONLY=0; LOCAL_BIN=0; LOCAL_ARCHIVE=""; WEB_PORT=8080
 while [ $# -gt 0 ]; do
   case "$1" in
     --check) CHECK_ONLY=1 ;;
     --local) LOCAL_BIN=1 ;;
+    --local-archive)
+      LOCAL_ARCHIVE="${2:-}"
+      [ -n "$LOCAL_ARCHIVE" ] || { echo "--local-archive needs a file path" >&2; exit 2; }
+      shift ;;
     --port)  WEB_PORT="$2"; shift ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac; shift
 done
+if [ "$LOCAL_BIN" = 1 ] && [ -n "$LOCAL_ARCHIVE" ]; then
+  echo "--local and --local-archive can't be combined (pick one binary source)" >&2; exit 2
+fi
 
 c_grn=$'\033[32m'; c_ylw=$'\033[33m'; c_red=$'\033[31m'; c_off=$'\033[0m'
 say()  { echo "${c_grn}[paladin]${c_off} $*"; }
@@ -74,34 +86,83 @@ ask() { # ask "Question" -> sets $REPLY_ANS to y/n
   case "$REPLY_ANS" in y|Y|yes|YES) REPLY_ANS=y ;; *) REPLY_ANS=n ;; esac
 }
 
+# Development builds report "dev" (plain `go build`) or "dev-<commit>[-dirty]"
+# (scripts/deploy-test.sh). Their version string doesn't identify their
+# contents, so they never count as "already up to date".
+is_dev_version() {
+  case "${1:-}" in ""|dev|dev-*|unknown) return 0 ;; *) return 1 ;; esac
+}
+
+# --local-archive: verify (if a .sha256 sits beside it) and unpack the
+# tarball BEFORE anything on the machine changes. Sets STAGED_BIN and
+# ARCHIVE_VERSION. The hash is compared directly rather than via
+# `sha256sum -c`, which would check whatever file name the .sha256 names.
+stage_local_archive() { # $1=tarball
+  local archive="$1" want got
+  [ -f "$archive" ] || die "--local-archive: no such file: $archive"
+  if [ -f "$archive.sha256" ]; then
+    want=$(awk '{print $1; exit}' "$archive.sha256")
+    got=$(sha256sum "$archive" | awk '{print $1}')
+    [ -n "$want" ] && [ "$want" = "$got" ] || die "--local-archive: checksum mismatch for $archive (expected ${want:-nothing}, got $got)"
+    say "Verified $(basename "$archive") against its .sha256."
+  else
+    warn "--local-archive: no $(basename "$archive").sha256 beside it — NOT verified."
+  fi
+  STAGE_DIR=$(mktemp -d)
+  tar -xzf "$archive" -C "$STAGE_DIR" paladin 2>/dev/null || die "--local-archive: $archive has no 'paladin' binary inside"
+  STAGED_BIN="$STAGE_DIR/paladin"
+  [ -x "$STAGED_BIN" ] || die "--local-archive: 'paladin' in $archive is not executable"
+  ARCHIVE_VERSION=$("$STAGED_BIN" version 2>/dev/null | awk '{print $2}' || true)
+  [ -n "$ARCHIVE_VERSION" ] || die "--local-archive: the binary in $archive did not report a version"
+}
+
+# Sourced with PALADIN_INSTALL_LIB_ONLY=1 (by scripts/test-install-archive.sh):
+# stop here, with the helpers above defined, so they can be tested on a
+# laptop without root. Normal runs never set this.
+if [ "${PALADIN_INSTALL_LIB_ONLY:-0}" = 1 ]; then return 0 2>/dev/null || exit 0; fi
+
 # ---------- preflight ----------
 [ "$(id -u)" = 0 ] || die "must run as root (sudo)"
 [ "$(uname -m)" = x86_64 ] || die "x86_64 only (found $(uname -m))"
 command -v systemctl >/dev/null || die "systemd is required"
 command -v curl >/dev/null || die "curl is required"
 command -v ss >/dev/null || die "ss (iproute2) is required"
+[ -z "$LOCAL_ARCHIVE" ] || stage_local_archive "$LOCAL_ARCHIVE"
 
 # ---------- scenario 0: update an existing install ----------
 if [ -x "$BIN" ] && [ -f "$CONF" ]; then
   say "Existing Paladin installation detected — update mode."
   installed=$("$BIN" version 2>/dev/null | awk '{print $2}' || echo unknown)
-  latest=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep -oP '"tag_name":\s*"\K[^"]+' || true)
-  [ -n "$latest" ] || die "could not determine latest release (GitHub API). Try again later."
-  say "Installed: $installed   Latest: $latest"
+  if [ -n "$LOCAL_ARCHIVE" ]; then
+    latest="$ARCHIVE_VERSION"
+    say "Installed: $installed   Local archive: $latest"
+  else
+    latest=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep -oP '"tag_name":\s*"\K[^"]+' || true)
+    [ -n "$latest" ] || die "could not determine latest release (GitHub API). Try again later."
+    say "Installed: $installed   Latest: $latest"
+  fi
   # --check stays read-only, so it never prints (or creates) a setup token.
-  if [ "$installed" = "$latest" ]; then
+  # Dev builds never count as up to date (see is_dev_version).
+  if [ "$installed" = "$latest" ] && ! is_dev_version "$latest"; then
     say "Already up to date. Nothing to do."
     [ "$CHECK_ONLY" = 1 ] || print_setup_token
     exit 0
   fi
   [ "$CHECK_ONLY" = 1 ] && { say "--check: would update $installed -> $latest and restart $PALADIN_UNIT."; exit 0; }
+  case "$installed" in dev|dev-*)
+    is_dev_version "$latest" || warn "Installed is a development build ($installed); this replaces it with release $latest." ;;
+  esac
   ask "Update Paladin $installed -> $latest and restart the web service? (The game server is NOT touched.)"
   [ "$REPLY_ANS" = y ] || { say "Aborted."; print_setup_token; exit 0; }
-  tmp=$(mktemp -d)
-  curl -fsSL -o "$tmp/paladin.tar.gz" \
-    "https://github.com/$REPO/releases/download/$latest/paladin_${latest}_linux_x86_64.tar.gz"
-  tar -xzf "$tmp/paladin.tar.gz" -C "$tmp" paladin
-  install -m 0755 "$tmp/paladin" "$BIN"; rm -rf "$tmp"
+  if [ -n "$LOCAL_ARCHIVE" ]; then
+    install -m 0755 "$STAGED_BIN" "$BIN"; rm -rf "$STAGE_DIR"
+  else
+    tmp=$(mktemp -d)
+    curl -fsSL -o "$tmp/paladin.tar.gz" \
+      "https://github.com/$REPO/releases/download/$latest/paladin_${latest}_linux_x86_64.tar.gz"
+    tar -xzf "$tmp/paladin.tar.gz" -C "$tmp" paladin
+    install -m 0755 "$tmp/paladin" "$BIN"; rm -rf "$tmp"
+  fi
   systemctl restart "$PALADIN_UNIT"
   say "Updated to $latest and restarted. Done."
   print_setup_token
@@ -240,6 +301,11 @@ fetch_sav_cli() { # $1=user $2=home
 }
 
 install_paladin_binary() {
+  if [ -n "$LOCAL_ARCHIVE" ]; then
+    install -m 0755 "$STAGED_BIN" "$BIN"; rm -rf "$STAGE_DIR"
+    say "Installed Paladin $ARCHIVE_VERSION from $LOCAL_ARCHIVE."
+    return
+  fi
   if [ "$LOCAL_BIN" = 1 ]; then
     [ -x ./paladin ] || die "--local: no executable ./paladin in $(pwd)"
     install -m 0755 ./paladin "$BIN"; say "Installed local ./paladin build."

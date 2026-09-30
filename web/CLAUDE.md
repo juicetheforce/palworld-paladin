@@ -24,5 +24,6 @@
   - Known gap: the map has no touch pan/pinch yet.
 - **Errors reach the user.** Show every API failure to the user. A swallowed
   UI error was a production bug.
-- **Version display.** A hand-built binary shows `dev` in the footer; that is
-  correct. The "· update" indicator is suppressed on dev builds.
+- **Version display.** A hand-built binary shows `dev` in the footer, and a
+  `scripts/deploy-test.sh` build shows `dev-<commit>[-dirty]`; both are
+  correct. The "· update" indicator is suppressed on all dev builds.

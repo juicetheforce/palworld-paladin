@@ -50,7 +50,16 @@ import (
 )
 
 // version is stamped by release builds via -ldflags "-X main.version=vX.Y.Z".
+// A plain `go build` reports "dev"; scripts/deploy-test.sh stamps
+// "dev-<commit>[-dirty]".
 var version = "dev"
+
+// isDevBuild reports whether v is a development build ("dev", "dev-<commit>",
+// "dev-<commit>-dirty", or unstamped). Dev builds have no release to compare
+// against, so the update indicator stays off for them.
+func isDevBuild(v string) bool {
+	return v == "" || v == "dev" || strings.HasPrefix(v, "dev-")
+}
 
 // Built-in defaults: the original test-box layout. Real installs override
 // these through config.json, written by scripts/install.sh.
@@ -1134,7 +1143,7 @@ func detectWorldDir(root string) (string, error) {
 // the indicator simply doesn't render. One request per ttl per install
 // keeps us far under GitHub's unauthenticated rate limits.
 func cachedPaladinLatest(current string, ttl time.Duration) func(ctx context.Context) string {
-	if current == "dev" || current == "" {
+	if isDevBuild(current) {
 		return nil
 	}
 	var mu sync.Mutex

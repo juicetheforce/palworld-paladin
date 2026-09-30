@@ -1,0 +1,9 @@
+# Disposable test VMs that scripts/deploy-test.sh may deploy to.
+# Copy this file to scripts/test-hosts (gitignored) and list one ssh
+# destination per line, spelled exactly as you pass it to deploy-test.sh
+# (an ~/.ssh/config alias, user@host, or an IP). Lines starting with # and
+# blank lines are ignored.
+#
+# NEVER list the live server here.
+paladin-vm-ubuntu
+# paladin-vm-fedora

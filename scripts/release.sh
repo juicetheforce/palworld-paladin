@@ -16,17 +16,10 @@ if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
   echo "WARNING: working tree is dirty — the release will not match a clean checkout." >&2
 fi
 
+# shellcheck source=lib/build.sh
+. scripts/lib/build.sh
 out=dist-release
-mkdir -p "$out"
-echo "Building paladin $TAG (static, linux/amd64)…"
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-  go build -trimpath -ldflags "-s -w -X main.version=$TAG" -o "$out/paladin" ./cmd/paladin
-
-"$out/paladin" version | grep -Fq "$TAG" || { echo "version stamp failed" >&2; exit 1; }
-
-asset="paladin_${TAG}_linux_x86_64.tar.gz"
-tar -czf "$out/$asset" -C "$out" paladin
-( cd "$out" && sha256sum "$asset" > "$asset.sha256" && cat "$asset.sha256" )
+asset=$(build_and_package "$TAG" "$out")
 
 echo
 echo "Done: $out/$asset"

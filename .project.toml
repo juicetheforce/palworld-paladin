@@ -1,7 +1,7 @@
 name = "Paladin"
 summary = "Self-hosted web admin panel for a single Palworld dedicated server on Linux."
 stage = "live"
-next = "Test the first-run setup token on palworld-test, then cut a release so fresh installs get it."
+next = "Prep the test-VM snapshots (docs/testing.md), run the setup-token checklist via deploy-test.sh, then cut a release."
 category = "Gaming"
 paused = false
 focus = false

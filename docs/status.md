@@ -23,6 +23,12 @@ here. Items marked **VERIFY** are unconfirmed. Check them against the repo
   `curl -fsSL https://raw.githubusercontent.com/juicetheforce/palworld-paladin/main/scripts/install.sh | sudo bash`
   (update mode). The UI is on the LAN at port 8080.
 
+## Testing on VMs
+
+`scripts/deploy-test.sh <host> [--fresh|--update]` puts the working tree on
+a disposable Proxmox VM through the real installer (`docs/testing.md`). The
+setup-token items stay **not verified** until that checklist has been run.
+
 ## Deploy train (reference)
 
 1. Laptop: commit and push.
