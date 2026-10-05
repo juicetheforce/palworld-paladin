@@ -169,7 +169,29 @@ the box can get, and nobody else can:
 - `uninstall.sh` keeps the game server by default. Deleting world data sits
   behind a type-DELETE gate.
 
-**Testing on VMs goes through the real installer.** `scripts/deploy-test.sh
+**Releases are published from the laptop by Claude Code, only on request.**
+Releases kept stalling as a manual multi-host train (VM build, scp, tag,
+GitHub release), and v0.3.1 sat unpublished because of it.
+- `/release vX.Y.Z` now does the whole thing: pre-release checks;
+  `scripts/release.sh` (which refuses a dirty tree); a local `.sha256` check;
+  a lightweight tag (matching every existing tag); `gh release create
+  --latest` with both files.
+- **The definition of done** is an external check: the public
+  `releases/latest` API shows the new tag and both assets, and the
+  downloaded tarball matches the published `.sha256`.
+- Building on the laptop is equivalent to building on the VM: the binary is
+  static linux/amd64 and `-trimpath`, and an old-vs-new `release.sh` run of
+  the same commit gave a byte-identical binary.
+- Claude Code releases only when Ryan asks, never on its own initiative.
+  `.claude/settings.json` allows exactly the tag, push and `gh release`
+  commands this needs; force-push, ssh/scp, sudo and installer runs stay
+  denied.
+- Ryan's part is the fresh-VM test with the public curl one-liner, then the
+  live-box update.
+
+**Testing on VMs goes through the real installer.** The primary test is now
+the published release, installed with the public curl one-liner on a fresh
+VM (`docs/testing.md`). For unreleased builds, `scripts/deploy-test.sh
 <host> [--fresh|--update]` builds on the laptop with the same packaging code
 as `release.sh` (`scripts/lib/build.sh`), then runs `install.sh
 --local-archive` on a disposable VM, so fresh-install and update paths are

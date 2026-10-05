@@ -40,9 +40,13 @@ Any change that weakens either of these is a regression. Flag it.
   pins the actual failure, with a comment naming the incident.
 - **You commit and push.** When a task's checks pass (see "Finishing a
   task"), commit with a clear message and push to `main`. Never force-push,
-  rewrite pushed history, or push with failing checks. Never create tags or
-  GitHub releases; `/release` prepares those for Ryan. If a prompt says not to
-  commit, don't.
+  rewrite pushed history, or push with failing checks. If a prompt says not
+  to commit, don't.
+- **You publish releases, only when asked.** When Ryan asks for a release,
+  run `/release vX.Y.Z`. It builds here, tags, publishes the GitHub release,
+  and is done only when the external check passes. Never tag or release on
+  your own initiative, and never delete or overwrite an existing tag or
+  release.
 - **Stay on the laptop.** You run on Ryan's Fedora laptop and never touch
   `palworld-test` or the live server. When something must run there, give
   Ryan a complete, copy-paste command block with host-by-host steps in order.
@@ -101,8 +105,9 @@ scripts/test-installer-messages.sh # laptop check of the installer's first-login
 scripts/deploy-test.sh <host> [--fresh|--update]  # test VM via the real installer (see docs/testing.md)
 ```
 
-Release builds use `scripts/release.sh vX.Y.Z`. Ryan runs these; use
-`/release` to prepare one.
+Releases: `/release vX.Y.Z`, only when Ryan asks (see "How we work"). It runs
+`scripts/release.sh`, tags, publishes with `gh`, and checks the published
+release from the outside.
 
 ## Hard rules
 

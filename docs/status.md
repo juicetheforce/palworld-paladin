@@ -16,9 +16,12 @@ here. Items marked **VERIFY** are unconfirmed. Check them against the repo
 
 - **Laptop:** Fedora. Development, commits, and Claude Code. The only machine
   Claude Code touches.
-- **palworld-test:** a Proxmox VM running Ubuntu 24.04. Integration testing
-  and `scripts/release.sh` builds. Hand-built binaries report `dev`. Its
-  sudoers was hand-written, not installer-generated (see learnings).
+- **palworld-test:** a Proxmox VM running Ubuntu 24.04, used for
+  integration testing. Hand-built binaries report `dev`. Its sudoers was
+  hand-written, not installer-generated (see learnings). Releases are no
+  longer built here.
+- **Test VMs:** disposable Proxmox VMs restored from snapshots, for
+  fresh-install and update tests (`docs/testing.md`).
 - **Live box ("Palbrary"):** Ubuntu Server. Deployed with
   `curl -fsSL https://raw.githubusercontent.com/juicetheforce/palworld-paladin/main/scripts/install.sh | sudo bash`
   (update mode). The UI is on the LAN at port 8080.
@@ -29,15 +32,14 @@ here. Items marked **VERIFY** are unconfirmed. Check them against the repo
 a disposable Proxmox VM through the real installer (`docs/testing.md`). The
 setup-token items stay **not verified** until that checklist has been run.
 
-## Deploy train (reference)
+## Release train (reference)
 
-1. Laptop: commit and push.
-2. VM: `git pull && ./scripts/release.sh vX.Y.Z`.
-3. Laptop: `scp` the `dist-release/*` artifacts, then `git tag` and
-   `git push origin <tag>`.
-4. GitHub: draft the release and attach both files (the tarball and its
-   `.sha256`).
-5. Live box: run the curl install/update one-liner.
+1. Ryan asks for a release; Claude Code runs `/release vX.Y.Z` on the
+   laptop. It checks, builds, tags, publishes the GitHub release, and
+   verifies it from the public API (tag, both assets, checksum of the
+   downloaded tarball).
+2. Ryan: fresh-VM test with the public curl one-liner (`docs/testing.md`).
+3. Ryan: update the live box with the same one-liner.
 
 ## Shipped
 
