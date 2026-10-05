@@ -6,9 +6,12 @@ here. Items marked **VERIFY** are unconfirmed. Check them against the repo
 
 ## Version
 
-- Latest release: **v0.3.0** (full server reset). Tags v0.1.0–v0.3.0 all
-  exist locally, on origin, and as published GitHub releases, each with a
-  tarball and `.sha256`.
+- Latest release: **v0.3.1** (2026-10-05; first-login setup token,
+  password management, honest installer summary). Published from the
+  laptop via `/release`, and verified from the public API (tag, both assets,
+  downloaded tarball matches its `.sha256`). Tags v0.1.0–v0.3.1 all exist
+  locally, on origin, and as published GitHub releases, each with a tarball
+  and `.sha256`.
 - Live box: last confirmed on **v0.1.7**. **VERIFY:** only Ryan can say
   what it runs now (`paladin version` on the box).
 
@@ -28,9 +31,10 @@ here. Items marked **VERIFY** are unconfirmed. Check them against the repo
 
 ## Testing on VMs
 
-`scripts/deploy-test.sh <host> [--fresh|--update]` puts the working tree on
-a disposable Proxmox VM through the real installer (`docs/testing.md`). The
-setup-token items stay **not verified** until that checklist has been run.
+The primary test is the published release, installed with the public curl
+one-liner on a fresh VM (`docs/testing.md`). `scripts/deploy-test.sh` covers
+unreleased builds. **v0.3.1's first-login checklist has not been run on real
+hardware yet**; it stays not verified until Ryan runs it.
 
 ## Release train (reference)
 
@@ -62,15 +66,13 @@ setup-token items stay **not verified** until that checklist has been run.
 - Broadcast, force-save, and restart.
 - Mobile layout with a drawer nav.
 - Installer (fresh, adopt, takeover, `--check`, update) and uninstaller.
-- **Unreleased (on main, for v0.3.1):**
+- **v0.3.1:**
   - two-step first run (setup token → create password);
   - first-run setup token (`sudo paladin setup-token`, printed by the
     installer);
   - change password in the UI;
   - `sudo paladin reset-password`;
   - installer summary messaging that matches what actually happened.
-
-  Fresh installs only get these once v0.3.1 is published.
 
 ## In flight
 

@@ -3,7 +3,7 @@
 Self-hosted web admin panel for a single Palworld dedicated server on Linux.
 The Go backend ships as a single static binary with the React/TypeScript
 frontend embedded via `go:embed`. Licensed Apache-2.0. Repo:
-`github.com/juicetheforce/palworld-paladin`. Latest release: **v0.3.0**
+`github.com/juicetheforce/palworld-paladin`. Latest release: **v0.3.1**
 (check `git tag` for newer).
 
 Paladin exists to close two gaps that existing tools leave open:

@@ -1,7 +1,7 @@
 name = "Paladin"
 summary = "Self-hosted web admin panel for a single Palworld dedicated server on Linux."
 stage = "live"
-next = "Prep the test-VM snapshots (docs/testing.md), run the setup-token checklist via deploy-test.sh, then cut a release."
+next = "Run the v0.3.1 first-login checklist on a fresh VM (public curl one-liner), then update the live box."
 category = "Gaming"
 paused = false
 focus = false
