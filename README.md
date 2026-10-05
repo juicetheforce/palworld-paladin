@@ -79,31 +79,43 @@ touching anything. I'd recommend that on any box you care about.
 **Updating Paladin** is the same command. It notices Paladin is installed,
 compares versions, and swaps the binary. Your server isn't touched.
 
-## First login: your setup token
+## First login: setup token, then your password
 
-The first time you open Paladin in a browser, it asks you to create a
-password. Before it lets you, it also asks for a **setup token**: a one-time
-code that proves you're the person who installed it. Without it, anyone else
-on your network who happened to open the page first could create the admin
-account before you did.
+*This is how it works from v0.3.1. v0.3.0 and earlier just ask you to create
+a password on your first visit, so do that right after installing, before
+anyone else on your network can.*
 
-**Where to find it:** the installer prints it at the end, right under the
-Web UI address:
+Signing in for the first time takes two steps.
+
+**1. Enter your setup token.** The setup token is a one-time code that proves
+you're the person who installed Paladin. Without it, anyone else on your
+network who happened to open the page first could create the admin account
+before you did. It's not a password, and you only use it once. The installer
+prints it at the end, in a highlighted block right under the Web UI address:
 
 ```
 [paladin]    Web UI:        http://192.168.1.50:8080
-[paladin]    Setup token:   (a 32-character code of letters and numbers)
+[paladin]    ================= SETUP TOKEN =================
+[paladin]       (a 32-character code of letters and numbers)
+[paladin]    ===============================================
 ```
 
-Copy it into the "Setup token" box, choose your password, and you're in.
+The installer also mentions a "Game server REST API password". That one is
+for Paladin to talk to the game server. It is **not** your login, and you
+never need to type it.
 
-**If you missed it:** run this on the server:
+**2. Create your Paladin admin password.** Once the token is accepted, choose
+a password (at least 8 characters) and type it twice. That's the password
+you'll sign in with from now on. The setup token is deleted at this point;
+you won't need it again.
+
+**If you missed the token:** run this on the server:
 
 ```bash
 sudo paladin setup-token
 ```
 
-If that says `command not found` (some distros don't let `sudo` see
+If that says `command not found` (RHEL, Alma and Rocky don't let `sudo` see
 `/usr/local/bin`), use the full path instead:
 
 ```bash
@@ -113,30 +125,21 @@ sudo /usr/local/bin/paladin setup-token
 Rerunning the installer also prints it. The token stays valid until you
 create your admin account, however long that takes.
 
-**After setup:** the token is deleted, and you won't need it again. Running
-`sudo paladin setup-token` afterwards just tells you setup is already
-complete.
+**Changing your password:** in Paladin, choose **Change password** at the
+bottom of the menu. You'll need your current password. Any other browser
+that was signed in gets signed out.
 
-**Forgot your password?** There's no reset button or command yet. What works
-today is starting the first-run setup over, which keeps your server, world,
-settings and backups exactly as they are:
+**Forgot your password?** Run this on the server:
 
-1. Find where Paladin keeps its data (on a fresh install it's
-   `/home/palworld`):
+```bash
+sudo paladin reset-password
+```
 
-   ```bash
-   sudo grep data_dir /etc/paladin/config.json
-   ```
-
-2. Delete the login file inside it, then restart Paladin:
-
-   ```bash
-   sudo rm /home/palworld/paladin-config/auth.json   # use your data_dir from step 1
-   sudo systemctl restart paladin
-   ```
-
-3. Get a fresh setup token with `sudo paladin setup-token`, open the web UI,
-   and create a new password.
+It asks before doing anything. Then it removes the admin account, restarts
+Paladin's web service (which signs everyone out), and prints a new setup
+token. Open the Web UI and do the two steps above again. Your game server,
+world, settings and backups are not touched. (Same `command not found` note
+as above: use `sudo /usr/local/bin/paladin reset-password` if needed.)
 
 **Keep it off the internet.** Paladin listens on all of the server's network
 addresses so your phone and other devices on your home network can reach it.

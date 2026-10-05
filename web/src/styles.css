@@ -73,6 +73,14 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .nav-foot { padding: 10px 12px; font-size: 11px; color: var(--text-faint); }
 .nav-logout { color: var(--text-dim); font-size: 13px; padding: 10px 12px; cursor: pointer; border-radius: 9px; }
 .nav-logout:hover { background: var(--surface-2); color: var(--bad); }
+.nav-account { color: var(--text-dim); font-size: 13px; padding: 10px 12px; cursor: pointer; border-radius: 9px; }
+.nav-account:hover, .nav-account.active { background: var(--surface-2); color: var(--text); }
+.account-card .field { max-width: 420px; }
+.account-msg { font-size: 13px; margin: 2px 0 12px; }
+.account-msg.bad { color: var(--bad); }
+.account-msg.good { color: var(--good); }
+.account-hint { font-size: 12px; color: var(--text-faint); }
+.account-hint code { font-family: ui-monospace, monospace; color: var(--text-dim); }
 
 .main { padding: 28px 32px; overflow-y: auto; }
 .page-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 22px; }

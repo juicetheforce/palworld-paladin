@@ -89,5 +89,5 @@ echo
 say "Uninstall complete."
 if [ -n "$DATA_DIR" ]; then
   say "Kept (yours to delete whenever): $DATA_DIR/paladin-backups, $DATA_DIR/paladin-journal, $DATA_DIR/paladin-config, $DATA_DIR/paladin-logs"
-  say "Note: your Paladin web login lives in $DATA_DIR/paladin-config/auth.json — a reinstall keeps it. Delete that file for a fresh login."
+  say "Note: your Paladin web login lives in $DATA_DIR/paladin-config/auth.json — a reinstall keeps it. Forgot it later? Run: sudo paladin reset-password"
 fi

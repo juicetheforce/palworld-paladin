@@ -140,11 +140,13 @@ func (s *Server) Handler() http.Handler { return s.mux }
 func (s *Server) routes() {
 	// Auth-related (no session required).
 	s.mux.HandleFunc("POST /api/setup", s.handleSetup)
+	s.mux.HandleFunc("POST /api/setup/verify-token", s.handleVerifySetupToken)
 	s.mux.HandleFunc("POST /api/login", s.handleLogin)
 	s.mux.HandleFunc("POST /api/logout", s.handleLogout)
 	s.mux.HandleFunc("GET /api/session", s.handleSession)
 
 	// Protected API.
+	s.mux.Handle("POST /api/account/password", s.requireAuth(http.HandlerFunc(s.handleChangePassword)))
 	s.mux.Handle("GET /api/status", s.requireAuth(http.HandlerFunc(s.handleStatus)))
 	s.mux.Handle("GET /api/host", s.requireAuth(http.HandlerFunc(s.handleHost)))
 	s.mux.Handle("GET /api/players", s.requireAuth(http.HandlerFunc(s.handlePlayers)))
@@ -233,20 +235,10 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The setup token proves the caller has sudo on the box (see
-	// setuptoken.go for why). Checked before anything is written.
-	switch err := CheckSetupToken(s.setupToken, req.Token); {
-	case err == nil:
-	case errors.Is(err, ErrSetupTokenMissing):
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Setup token required. Run `sudo paladin setup-token` on the server to get it."})
-		return
-	case errors.Is(err, ErrSetupTokenWrong):
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "That setup token is wrong. Run `sudo paladin setup-token` on the server to see it."})
-		return
-	case errors.Is(err, ErrNoSetupToken):
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "No setup token exists yet. Run `sudo paladin setup-token` on the server to create one."})
-		return
-	default:
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Could not read the setup token: " + err.Error()})
+	// setuptoken.go for why). Checked here, at account creation, even
+	// though the UI already checked it at step 1: verify-token is a
+	// convenience, this is the security boundary.
+	if !s.checkSetupToken(w, req.Token) {
 		return
 	}
 	if req.Username == "" {
@@ -265,6 +257,85 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.issueSession(w, req.Username)
+}
+
+// checkSetupToken validates a first-run setup token and, if it's not valid,
+// writes the error response and returns false.
+func (s *Server) checkSetupToken(w http.ResponseWriter, token string) bool {
+	switch err := CheckSetupToken(s.setupToken, token); {
+	case err == nil:
+		return true
+	case errors.Is(err, ErrSetupTokenMissing):
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Setup token required. Run `sudo paladin setup-token` on the server to get it."})
+	case errors.Is(err, ErrSetupTokenWrong):
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "That setup token is wrong. Run `sudo paladin setup-token` on the server to see it."})
+	case errors.Is(err, ErrNoSetupToken):
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "No setup token exists yet. Run `sudo paladin setup-token` on the server to create one."})
+	default:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Could not read the setup token: " + err.Error()})
+	}
+	return false
+}
+
+// handleVerifySetupToken is step 1 of the first-run screen: it checks the
+// token so the UI can move on to "create your password". It does NOT
+// consume the token or create anything; /api/setup checks it again.
+func (s *Server) handleVerifySetupToken(w http.ResponseWriter, r *http.Request) {
+	if !s.auth.NeedsSetup() {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "already configured"})
+		return
+	}
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
+		return
+	}
+	if !s.checkSetupToken(w, req.Token) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// handleChangePassword changes the signed-in admin's password. It needs the
+// current password, and signs out every session afterwards (then signs
+// this browser back in), so a session opened with the old password can't
+// outlive it.
+func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie(cookieName)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not authenticated"})
+		return
+	}
+	username, ok := s.sessions.Valid(c.Value)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session expired"})
+		return
+	}
+	var req struct {
+		Current string `json:"current_password"`
+		New     string `json:"new_password"`
+		Confirm string `json:"confirm_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
+		return
+	}
+	if req.New != req.Confirm {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "The new passwords don't match."})
+		return
+	}
+	if !s.auth.Verify(username, req.Current) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "Your current password is wrong."})
+		return
+	}
+	if err := s.auth.SetAdminPassword(username, req.New); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	s.sessions.DeleteAll()
+	s.issueSession(w, username)
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {

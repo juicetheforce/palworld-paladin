@@ -157,3 +157,11 @@ func (s *SessionStore) Delete(tok string) {
 	delete(s.sessions, tok)
 	s.mu.Unlock()
 }
+
+// DeleteAll signs everyone out. Used when the password changes, so a
+// session opened with the old password doesn't outlive it.
+func (s *SessionStore) DeleteAll() {
+	s.mu.Lock()
+	s.sessions = map[string]session{}
+	s.mu.Unlock()
+}

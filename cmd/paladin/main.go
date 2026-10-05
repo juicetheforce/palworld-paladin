@@ -111,6 +111,8 @@ func main() {
 		err = cmdServe(args)
 	case "setup-token":
 		err = cmdSetupToken(args)
+	case "reset-password":
+		err = cmdResetPassword(args)
 	case "version":
 		fmt.Println("paladin", version)
 	default:
@@ -131,7 +133,9 @@ func usage() {
   restore --backup <id>          orchestrated world restore cycle
   recover                        report a crash-interrupted cycle, if any
   serve [--addr host:port]       run the web UI (default 127.0.0.1:8080)
-  setup-token                    print the first-run setup token (run with sudo)`)
+  setup-token                    print the first-run setup token (run with sudo)
+  reset-password                 forgot your password: remove the admin account and
+                                 start first-run setup again (run with sudo)`)
 }
 
 // ---- wiring -----------------------------------------------------------------

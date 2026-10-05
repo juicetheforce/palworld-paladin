@@ -82,6 +82,27 @@ writing.
 **Swallowed UI errors (live box).** Failed API calls looked like nothing had
 happened. Every failure must reach the user.
 
+**Installer text that described output that wasn't there (fresh-install VM,
+2026-10-04).**
+- Symptom: the installer summary said "use the setup token shown above", but
+  no token had been shown, because main's installer had installed the v0.3.0
+  binary, which can't make one. The line sat right under "REST password:
+  stored in /etc/paladin/config.json". The game's REST password got typed in
+  as the Paladin login. The README also described the setup token as current
+  before any release had it.
+- Cause: the messages were written for the expected case, not derived from
+  what the installed binary actually did, and a credential line was labelled
+  only by its name, so it read as "the password".
+- Fix: the summary's closing line now comes from what `paladin setup-token`
+  actually returned (token / setup complete / older binary / error), and the
+  REST line says "not your Paladin login". Pinned by
+  `scripts/test-installer-messages.sh`.
+- Rules:
+  - Installer and README text describes what *this* binary does. Never point
+    at output that wasn't printed.
+  - Label every credential with what it's *for*.
+  - Docs for unreleased behaviour say which version they apply from.
+
 ## Map
 
 **Player dot in the ocean.**

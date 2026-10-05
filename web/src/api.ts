@@ -141,6 +141,18 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password, token }),
     }).then(j<{ ok: boolean }>),
+  verifySetupToken: (token: string) =>
+    fetch("/api/setup/verify-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    }).then(j<{ ok: boolean }>),
+  changePassword: (current_password: string, new_password: string, confirm_password: string) =>
+    fetch("/api/account/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current_password, new_password, confirm_password }),
+    }).then(j<{ ok: boolean }>),
   login: (password: string) =>
     fetch("/api/login", {
       method: "POST",

@@ -134,9 +134,30 @@ the box can get, and nobody else can:
   aborted, or updated). `--check` stays read-only and never creates one. An
   older binary without the subcommand yields empty stdout, so the installer
   prints nothing instead of failing.
-- **Not built:** a password-reset command. Today a forgotten password means
-  deleting `auth.json` and restarting Paladin, which reopens first-run setup
-  with a new token (documented in the README).
+- **Two-step first run (UI):** step 1 checks the token
+  (`POST /api/setup/verify-token`, which doesn't consume it), and step 2
+  creates the password, with a confirm field. `POST /api/setup` still
+  requires the token, so step 1 is a convenience, not the security boundary.
+- **Installer messaging is derived, not assumed:** the summary's closing line
+  follows what `paladin setup-token` actually returned (token / setup
+  complete / exit 2 = older binary / error). The REST line is labelled "not
+  your Paladin login". See learnings.md (fresh-install VM, 2026-10-04).
+
+**Password management.**
+- **Change password:** `POST /api/account/password` (signed in) needs the
+  current password plus a new password and its confirmation, checked server
+  side. On success every session is signed out and this browser gets a fresh
+  one, so a session opened with the old password can't outlive it.
+- **Forgot password:** `sudo paladin reset-password`.
+  - It confirms first, removes `auth.json`, issues a new setup token
+    (printed on stdout, like `setup-token`), and restarts `paladin.service`.
+  - **The restart is required:** `serve` holds the admin account and the
+    sessions in memory, so without it the old password and sessions would
+    keep working. The unit name is the one `install.sh` always writes.
+  - It refuses while a maintenance journal is open (running or interrupted
+    cycle), because the restart would cut it off.
+  - With no admin, it just prints the setup token.
+  - This replaces the old manual "delete auth.json and restart".
 
 **Installer model.**
 - One curl-pipe command both installs and updates.

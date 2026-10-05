@@ -72,14 +72,15 @@ internal/
   events/             in-process pub/sub, JSONL event log, SSE feed
   hostmetrics/        host CPU/RAM/temps/network from /proc and /sys
   webserv/            Paladin's HTTP API, auth (auth.json, PBKDF2, in-memory
-                      sessions, first-run setup token), SSE, map, embedded
-                      frontend
+                      sessions, first-run setup token, change password),
+                      SSE, map, embedded frontend
     dist/             BUILT frontend bundle — committed (see web/CLAUDE.md)
 data/palworld-settings.json   settings key list (embedded via data/data.go)
 web/                  React + TypeScript + Vite source
 scripts/              install.sh (detection, fresh install, adopt, takeover,
                       update, sudoers grant), uninstall.sh, release.sh,
-                      deploy-test.sh (test VMs), test-install-archive.sh
+                      deploy-test.sh (test VMs), test-install-archive.sh,
+                      test-installer-messages.sh
   lib/build.sh        build + package step shared by release/deploy-test
 docs/                 see "Context docs" below
 .github/workflows/    CI: go vet, build, test, settings JSON check
@@ -96,6 +97,7 @@ cd web && npm ci && npm run build  # rebuilds internal/webserv/dist
 go build -o paladin ./cmd/paladin  # local binary; reports version "dev"
 bash -n scripts/*.sh scripts/lib/*.sh             # syntax check
 scripts/test-install-archive.sh    # laptop check of install.sh --local-archive
+scripts/test-installer-messages.sh # laptop check of the installer's first-login summary
 scripts/deploy-test.sh <host> [--fresh|--update]  # test VM via the real installer (see docs/testing.md)
 ```
 

@@ -29,8 +29,121 @@ export function App() {
 // ---- auth ----
 
 function AuthScreen({ mode, onDone }: { mode: "setup" | "login"; onDone: () => void }) {
-  const [password, setPassword] = useState("");
+  return mode === "setup" ? <SetupScreen onDone={onDone} /> : <LoginScreen onDone={onDone} />;
+}
+
+// First run, in two steps: (1) the setup token, which proves whoever is
+// creating the account has sudo on the server; (2) the admin password.
+// Step 1 is only a convenience check: the server requires the token again
+// when the account is created, so skipping step 1 gets nobody anywhere.
+function SetupScreen({ onDone }: { onDone: () => void }) {
+  const [step, setStep] = useState<1 | 2>(1);
   const [token, setToken] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const checkToken = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      await api.verifySetupToken(token.trim());
+      setStep(2);
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+    setBusy(false);
+  };
+
+  const create = async () => {
+    if (password !== confirm) {
+      setErr("The passwords don't match.");
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    try {
+      await api.setup(password, token.trim());
+      onDone();
+    } catch (e) {
+      const msg = (e as Error).message;
+      // The token stopped being valid between steps (e.g. someone ran
+      // reset-password): go back to step 1 and say why.
+      if (/setup token/i.test(msg)) setStep(1);
+      setErr(msg);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="auth-wrap">
+      <div className="auth-card">
+        <div className="auth-logo">Pal<span>adin</span></div>
+        {step === 1 ? (
+          <>
+            <div className="auth-sub">First run, step 1 of 2: enter your setup token.</div>
+            <div className="field">
+              <label>Setup token</label>
+              <input
+                className="setup-token"
+                type="text"
+                value={token}
+                autoFocus
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(e) => setToken(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && token.trim() && checkToken()}
+              />
+              <div className="auth-hint">
+                A one-time code printed at the end of the installer. Missed it? Run{" "}
+                <code>sudo paladin setup-token</code> on the server.
+              </div>
+            </div>
+            <div className="auth-err">{err}</div>
+            <button className="btn" onClick={checkToken} disabled={busy || token.trim().length < 1}>
+              Continue
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="auth-sub">Step 2 of 2: create your Paladin admin password.</div>
+            <div className="field">
+              <label>Password</label>
+              <input
+                type="password"
+                value={password}
+                autoFocus
+                autoComplete="new-password"
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label>Confirm password</label>
+              <input
+                type="password"
+                value={confirm}
+                autoComplete="new-password"
+                onChange={(e) => setConfirm(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && create()}
+              />
+              <div className="auth-hint">
+                This is the password you'll sign in with from now on. At least 8 characters.
+              </div>
+            </div>
+            <div className="auth-err">{err}</div>
+            <button className="btn" onClick={create} disabled={busy || password.length < 1 || confirm.length < 1}>
+              Create password &amp; enter
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LoginScreen({ onDone }: { onDone: () => void }) {
+  const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -41,8 +154,7 @@ function AuthScreen({ mode, onDone }: { mode: "setup" | "login"; onDone: () => v
     setBusy(true);
     setErr("");
     try {
-      if (mode === "setup") await api.setup(password, token.trim());
-      else await api.login(password);
+      await api.login(password);
       onDone();
     } catch (e) {
       setErr((e as Error).message);
@@ -54,46 +166,24 @@ function AuthScreen({ mode, onDone }: { mode: "setup" | "login"; onDone: () => v
     <div className="auth-wrap">
       <div className="auth-card">
         <div className="auth-logo">Pal<span>adin</span></div>
-        <div className="auth-sub">
-          {mode === "setup"
-            ? "First run — set a password to protect this panel."
-            : "Enter your password to continue."}
-        </div>
-        {mode === "setup" && (
-          // First-run setup token: proves whoever sets the password has sudo
-          // on the server (otherwise anyone on the LAN could claim it first).
-          <div className="field">
-            <label>Setup token</label>
-            <input
-              className="setup-token"
-              type="text"
-              value={token}
-              autoFocus
-              autoComplete="off"
-              spellCheck={false}
-              onChange={(e) => setToken(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-            />
-            <div className="auth-hint">
-              It was printed at the end of the installer. Missed it? Run <code>sudo paladin setup-token</code> on the server.
-            </div>
-          </div>
-        )}
+        <div className="auth-sub">Enter your password to continue.</div>
         <div className="field">
-          <label>{mode === "setup" ? "New password" : "Password"}</label>
+          <label>Password</label>
           <input
             type="password"
             value={password}
-            autoFocus={mode !== "setup"}
+            autoFocus
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
-            autoComplete={mode === "setup" ? "new-password" : "current-password"}
+            autoComplete="current-password"
           />
+          <div className="auth-hint">
+            Forgot it? Run <code>sudo paladin reset-password</code> on the server.
+          </div>
         </div>
         <div className="auth-err">{err}</div>
-        <button className="btn" onClick={submit}
-          disabled={busy || password.length < 1 || (mode === "setup" && token.trim().length < 1)}>
-          {mode === "setup" ? "Set password & enter" : "Sign in"}
+        <button className="btn" onClick={submit} disabled={busy || password.length < 1}>
+          Sign in
         </button>
       </div>
     </div>
@@ -102,7 +192,7 @@ function AuthScreen({ mode, onDone }: { mode: "setup" | "login"; onDone: () => v
 
 // ---- app shell ----
 
-type Section = "dashboard" | "players" | "map" | "settings" | "backups" | "console";
+type Section = "dashboard" | "players" | "map" | "settings" | "backups" | "console" | "account";
 
 const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "dashboard", label: "Dashboard", icon: "▮" },
@@ -139,7 +229,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
     return () => { alive = false; clearTimeout(timer); };
   }, []);
 
-  const currentLabel = NAV.find((n) => n.id === section)?.label ?? "";
+  const currentLabel = section === "account" ? "Account" : NAV.find((n) => n.id === section)?.label ?? "";
 
   return (
     <div className="shell">
@@ -171,6 +261,8 @@ function Shell({ onLogout }: { onLogout: () => void }) {
           </div>
         ))}
         <div className="nav-spacer" />
+        <div className={"nav-account" + (section === "account" ? " active" : "")}
+          onClick={() => { setSection("account"); setMenuOpen(false); }}>Change password</div>
         <div className="nav-logout" onClick={logout}>Sign out</div>
         <div className="nav-foot">
           Paladin {paladinVersion || "…"}
@@ -187,9 +279,81 @@ function Shell({ onLogout }: { onLogout: () => void }) {
         </div>
       </nav>
       <main className="main">
-        {section === "dashboard" ? <Dashboard /> : section === "players" ? <Players /> : section === "console" ? <ServerAdmin /> : section === "backups" ? <Backups /> : section === "settings" ? <Settings /> : section === "map" ? <WorldMap /> : <ComingSoon section={section} />}
+        {section === "dashboard" ? <Dashboard /> : section === "players" ? <Players /> : section === "console" ? <ServerAdmin /> : section === "backups" ? <Backups /> : section === "settings" ? <Settings /> : section === "map" ? <WorldMap /> : section === "account" ? <Account /> : <ComingSoon section={section} />}
       </main>
     </div>
+  );
+}
+
+// ---- account ----
+
+function Account() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setErr("");
+    setOk("");
+    if (next !== confirm) {
+      setErr("The new passwords don't match.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.changePassword(current, next, confirm);
+      setCurrent(""); setNext(""); setConfirm("");
+      setOk("Password changed. Any other signed-in browsers were signed out.");
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <div className="page-title">Account</div>
+          <div className="page-sub">Your Paladin admin password</div>
+        </div>
+      </div>
+      <div className="grid">
+        <div className="card span6 account-card">
+          <div className="card-label">Change password</div>
+          <div className="field">
+            <label>Current password</label>
+            <input type="password" value={current} autoComplete="current-password"
+              onChange={(e) => setCurrent(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>New password</label>
+            <input type="password" value={next} autoComplete="new-password"
+              onChange={(e) => setNext(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Confirm new password</label>
+            <input type="password" value={confirm} autoComplete="new-password"
+              onChange={(e) => setConfirm(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && save()} />
+          </div>
+          {err && <div className="account-msg bad">{err}</div>}
+          {ok && <div className="account-msg good">{ok}</div>}
+          <div className="admin-btn-row">
+            <button className="admin-btn" onClick={save}
+              disabled={busy || !current || !next || !confirm}>
+              {busy ? "Saving…" : "Change password"}
+            </button>
+          </div>
+          <div className="account-hint">
+            Forgot your password? Run <code>sudo paladin reset-password</code> on the server.
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 

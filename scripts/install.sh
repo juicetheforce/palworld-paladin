@@ -65,17 +65,81 @@ die()  { echo "${c_red}[paladin] ERROR:${c_off} $*" >&2; exit 1; }
 # pipefail — the classic.)
 gen_pw() { head -c 512 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 20; }
 
-# First-run setup token: shown whenever no Paladin admin exists yet, so a
-# rerun of this installer is one of the ways to recover it. `setup-token`
-# prints ONLY the token on stdout; empty stdout means setup is complete. An
-# older binary without the subcommand prints usage to stderr and exits
-# non-zero, which `|| true` absorbs: the installer must never die here.
-print_setup_token() {
-  local tok
-  tok=$("$BIN" setup-token 2>/dev/null || true)
-  [ -n "$tok" ] || return 0
-  say "   Setup token:   $tok"
-  say "   (needed once, to create your Paladin login; 'sudo paladin setup-token' shows it again)"
+# ---------- first-login messaging ----------
+# Every line here is derived from what actually happened. A fresh-install
+# test (2026-10-04) printed "use the setup token shown above" when no token
+# had been shown, right under the game's REST password line, and the REST
+# password got typed in as the Paladin login. See learnings.md.
+#
+# report_setup_token asks the installed binary for the first-run setup
+# token and sets SETUP_STATE:
+#   token        exit 0 + token on stdout: printed in a highlighted block
+#   complete     exit 0 + empty stdout: an admin already exists
+#   unsupported  exit 2: an older binary without the subcommand (its CLI
+#                prints usage and exits 2 on unknown commands)
+#   failed       anything else; SETUP_ERR holds the first stderr line
+# It never fails the installer.
+report_setup_token() {
+  local tok rc errf
+  errf=$(mktemp)
+  if tok=$("$BIN" setup-token 2>"$errf"); then rc=0; else rc=$?; fi
+  SETUP_ERR=$(head -n 1 "$errf" | sed 's/^ERROR: //'); rm -f "$errf"
+  if [ "$rc" = 0 ] && [ -n "$tok" ]; then
+    SETUP_STATE=token
+    local hl=$'\033[1;33m'
+    say "   ${hl}================= SETUP TOKEN =================${c_off}"
+    say "   ${hl}   $tok${c_off}"
+    say "   ${hl}===============================================${c_off}"
+    say "   A one-time code, not a password: enter it in the Web UI,"
+    say "   then create your Paladin admin password."
+  elif [ "$rc" = 0 ]; then
+    SETUP_STATE=complete
+  elif [ "$rc" = 2 ]; then
+    SETUP_STATE=unsupported
+  else
+    SETUP_STATE=failed
+    warn "   Couldn't get the setup token: ${SETUP_ERR:-unknown error}"
+  fi
+}
+
+# setup_next_step prints the closing instruction for SETUP_STATE. It must
+# never refer to output that wasn't printed.
+setup_next_step() {
+  case "${SETUP_STATE:-}" in
+    token)
+      say " Open the Web UI, enter the setup token shown above, then create your"
+      say " Paladin admin password." ;;
+    complete)
+      say " Open the Web UI and sign in with your Paladin admin password."
+      say " Forgot it? Run: sudo paladin reset-password" ;;
+    unsupported)
+      local ver; ver=$("$BIN" version 2>/dev/null | awk '{print $2}' || true)
+      warn " This Paladin build (${ver:-unknown}) predates setup tokens. If you haven't created"
+      warn " your Paladin admin password yet, open the Web UI and do it now, before anyone"
+      warn " else on your network can." ;;
+    *)
+      say " Get the setup token with: sudo paladin setup-token"
+      say " then open the Web UI, enter it, and create your Paladin admin password." ;;
+  esac
+}
+
+# print_summary: the end-of-install summary. Callers set ip and game_port.
+print_summary() {
+  echo
+  say "======================================================"
+  say " Paladin is installed and running."
+  say "   Web UI:        http://${ip:-<this-host>}:$WEB_PORT"
+  report_setup_token
+  say "   Game server:   ${ip:-<this-host>}:${game_port:-8211}/udp"
+  say "   Service user:  $SVC_USER"
+  say "   Units:         $SERVER_UNIT, $PALADIN_UNIT"
+  say "   Config:        $CONF"
+  say "   Game server REST API password (not your Paladin login): stored in $CONF"
+  say "   (and the game ini). Paladin uses it to talk to the game; you never type it."
+  setup_next_step
+  say " The UI listens on all interfaces so LAN devices can reach it: keep port $WEB_PORT"
+  say " off the internet (firewall, no port-forward)."
+  say "======================================================"
 }
 
 # Interactive prompts must read the terminal, not stdin (we may be piped).
@@ -145,7 +209,7 @@ if [ -x "$BIN" ] && [ -f "$CONF" ]; then
   # Dev builds never count as up to date (see is_dev_version).
   if [ "$installed" = "$latest" ] && ! is_dev_version "$latest"; then
     say "Already up to date. Nothing to do."
-    [ "$CHECK_ONLY" = 1 ] || print_setup_token
+    [ "$CHECK_ONLY" = 1 ] || { report_setup_token; setup_next_step; }
     exit 0
   fi
   [ "$CHECK_ONLY" = 1 ] && { say "--check: would update $installed -> $latest and restart $PALADIN_UNIT."; exit 0; }
@@ -153,7 +217,7 @@ if [ -x "$BIN" ] && [ -f "$CONF" ]; then
     is_dev_version "$latest" || warn "Installed is a development build ($installed); this replaces it with release $latest." ;;
   esac
   ask "Update Paladin $installed -> $latest and restart the web service? (The game server is NOT touched.)"
-  [ "$REPLY_ANS" = y ] || { say "Aborted."; print_setup_token; exit 0; }
+  [ "$REPLY_ANS" = y ] || { say "Aborted."; report_setup_token; setup_next_step; exit 0; }
   if [ -n "$LOCAL_ARCHIVE" ]; then
     install -m 0755 "$STAGED_BIN" "$BIN"; rm -rf "$STAGE_DIR"
   else
@@ -165,7 +229,7 @@ if [ -x "$BIN" ] && [ -f "$CONF" ]; then
   fi
   systemctl restart "$PALADIN_UNIT"
   say "Updated to $latest and restarted. Done."
-  print_setup_token
+  report_setup_token; setup_next_step
   exit 0
 fi
 
@@ -502,17 +566,4 @@ systemctl daemon-reload && systemctl enable --now "$PALADIN_UNIT"
 # ---------- summary ----------
 ip=$(hostname -I 2>/dev/null | awk '{print $1}')
 game_port=$(read_ini_value "$INSTALL_DIR/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini" PublicPort)
-echo
-say "======================================================"
-say " Paladin is installed and running."
-say "   Web UI:        http://${ip:-<this-host>}:$WEB_PORT"
-print_setup_token
-say "   Game server:   ${ip:-<this-host>}:${game_port:-8211}/udp"
-say "   Service user:  $SVC_USER"
-say "   Units:         $SERVER_UNIT, $PALADIN_UNIT"
-say "   Config:        $CONF"
-say "   REST password: stored in $CONF (and the game ini)"
-say " Open the Web UI to sign in. First time? Use the setup token shown above."
-say " The UI listens on all interfaces so LAN devices can reach it: keep port $WEB_PORT"
-say " off the internet (firewall, no port-forward)."
-say "======================================================"
+print_summary

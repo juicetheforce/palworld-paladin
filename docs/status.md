@@ -60,9 +60,15 @@ setup-token items stay **not verified** until that checklist has been run.
 - Broadcast, force-save, and restart.
 - Mobile layout with a drawer nav.
 - Installer (fresh, adopt, takeover, `--check`, update) and uninstaller.
-- **Unreleased (on main):** first-run setup token (`sudo paladin
-  setup-token`, printed by the installer). Needs a release before fresh
-  installs get it.
+- **Unreleased (on main, for v0.3.1):**
+  - two-step first run (setup token → create password);
+  - first-run setup token (`sudo paladin setup-token`, printed by the
+    installer);
+  - change password in the UI;
+  - `sudo paladin reset-password`;
+  - installer summary messaging that matches what actually happened.
+
+  Fresh installs only get these once v0.3.1 is published.
 
 ## In flight
 
@@ -80,9 +86,6 @@ setup-token items stay **not verified** until that checklist has been run.
 - Installer update mode doesn't rewrite the sudoers grant, so grant changes
   never reach existing installs. It also doesn't check the tarball's
   `.sha256`.
-- A password-reset command. Today a forgotten password means deleting
-  `<data_dir>/paladin-config/auth.json` and restarting Paladin (README,
-  "Forgot your password?").
 - CI doesn't run `gofmt -l` or check that `dist` matches `web/src`.
 - Backups have no automatic retention; pruning is manual (web multi-select
   delete, or `paladin backup prune --keep N`).

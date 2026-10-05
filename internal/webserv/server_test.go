@@ -163,6 +163,103 @@ func TestSetupRequiresToken(t *testing.T) {
 	}
 }
 
+// First run is two steps in the UI (token, then password), but the token
+// must still be required by the API at account creation: step 1 is a
+// convenience, not the security boundary.
+func TestSetupTwoStep(t *testing.T) {
+	s, auth := newTestServer(t)
+	h := s.Handler()
+	tok, _, err := EnsureSetupToken(s.setupToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verify := func(body string) int {
+		return do(t, h, "POST", "/api/setup/verify-token", body, nil).StatusCode
+	}
+	if c := verify(`{}`); c != http.StatusUnauthorized {
+		t.Fatalf("verify without a token must 401, got %d", c)
+	}
+	if c := verify(`{"token":"wrong"}`); c != http.StatusUnauthorized {
+		t.Fatalf("verify with a wrong token must 401, got %d", c)
+	}
+	if c := verify(`{"token":"` + tok + `"}`); c != http.StatusOK {
+		t.Fatalf("verify with the right token must 200, got %d", c)
+	}
+	// Verifying doesn't consume the token or create anything.
+	if _, err := os.Stat(s.setupToken); err != nil {
+		t.Fatalf("verify must not consume the token: %v", err)
+	}
+	if !auth.NeedsSetup() {
+		t.Fatal("verify must not create an admin")
+	}
+	// Step 2 without the token is still refused, even after a good verify.
+	if c := do(t, h, "POST", "/api/setup", `{"password":"hunter2hunter2"}`, nil).StatusCode; c != http.StatusUnauthorized {
+		t.Fatalf("setup without the token must 401 even after verify, got %d", c)
+	}
+	if c := do(t, h, "POST", "/api/setup", `{"password":"hunter2hunter2","token":"`+tok+`"}`, nil).StatusCode; c != http.StatusOK {
+		t.Fatalf("setup with the token must 200, got %d", c)
+	}
+	// Once set up, verify-token is closed too.
+	if c := verify(`{"token":"` + tok + `"}`); c != http.StatusConflict {
+		t.Fatalf("verify after setup must 409, got %d", c)
+	}
+}
+
+func TestChangePassword(t *testing.T) {
+	s, auth := newTestServer(t)
+	h := s.Handler()
+	auth.SetAdminPassword("admin", "hunter2hunter2")
+	login := func(pw string) *http.Response {
+		return do(t, h, "POST", "/api/login", `{"username":"admin","password":"`+pw+`"}`, nil)
+	}
+	ck := sessionCookie(login("hunter2hunter2"))
+	if ck == nil {
+		t.Fatal("login failed")
+	}
+	change := func(body string, c *http.Cookie) *http.Response {
+		return do(t, h, "POST", "/api/account/password", body, c)
+	}
+
+	if r := change(`{"current_password":"hunter2hunter2","new_password":"newpass123","confirm_password":"newpass123"}`, nil); r.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("change without a session must 401, got %d", r.StatusCode)
+	}
+	if r := change(`{"current_password":"WRONG-wrong","new_password":"newpass123","confirm_password":"newpass123"}`, ck); r.StatusCode != http.StatusForbidden {
+		t.Fatalf("wrong current password must 403, got %d", r.StatusCode)
+	}
+	if r := change(`{"current_password":"hunter2hunter2","new_password":"newpass123","confirm_password":"newpass124"}`, ck); r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("mismatched confirm must 400, got %d", r.StatusCode)
+	}
+	if r := change(`{"current_password":"hunter2hunter2","new_password":"short","confirm_password":"short"}`, ck); r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("too-short new password must 400, got %d", r.StatusCode)
+	}
+	// None of the refused attempts changed anything.
+	if !auth.Verify("admin", "hunter2hunter2") {
+		t.Fatal("a refused change must leave the old password working")
+	}
+
+	r := change(`{"current_password":"hunter2hunter2","new_password":"newpass123","confirm_password":"newpass123"}`, ck)
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("valid change must 200, got %d", r.StatusCode)
+	}
+	fresh := sessionCookie(r)
+	if fresh == nil {
+		t.Fatal("a successful change must sign this browser back in")
+	}
+	if login("hunter2hunter2").StatusCode == http.StatusOK {
+		t.Fatal("the old password must stop working")
+	}
+	if login("newpass123").StatusCode != http.StatusOK {
+		t.Fatal("the new password must work")
+	}
+	// The session opened with the old password is dead; the new one works.
+	if c := do(t, h, "GET", "/api/status", "", ck).StatusCode; c != http.StatusUnauthorized {
+		t.Fatalf("old session must be signed out after a password change, got %d", c)
+	}
+	if c := do(t, h, "GET", "/api/status", "", fresh).StatusCode; c != http.StatusOK {
+		t.Fatalf("the fresh session must work, got %d", c)
+	}
+}
+
 func TestStatusRequiresAuth(t *testing.T) {
 	s, _ := newTestServer(t)
 	h := s.Handler()

@@ -158,15 +158,39 @@ service user on a fresh install is `palworld`.
       sudo ls -l /home/palworld/paladin-config/setup-token   # owner palworld, not root
       ```
       Then use that token in the browser (proves Paladin can read it).
-- [ ] **Setup screen in a browser:**
-  - the token field and the `sudo paladin setup-token` hint show;
-  - with the token blank, the button stays disabled;
+- [ ] **Installer summary:**
+  - The token sits in a highlighted SETUP TOKEN block directly under the
+    Web UI line.
+  - The REST line says "not your Paladin login".
+  - The closing line says "enter the setup token shown above".
+- [ ] **Step 1 in a browser:**
+  - "step 1 of 2: enter your setup token" shows, with the
+    `sudo paladin setup-token` hint;
+  - with the token blank, Continue stays disabled;
   - a wrong token shows "That setup token is wrong…".
   - Check it at desktop width, ~380 px and ~340 px (browser dev tools), and
     on the Pixel Fold and the Titan 2.
-- [ ] **Right token plus a password lands on the dashboard.** Afterwards,
-      `/home/palworld/paladin-config/setup-token` is gone, and
-      `sudo paladin setup-token` says "Setup is already complete".
+- [ ] **Step 2:**
+  - "Create your Paladin admin password" appears with password and confirm
+    fields;
+  - mismatched passwords give "The passwords don't match.";
+  - matching passwords land on the dashboard.
+  - Afterwards, `/home/palworld/paladin-config/setup-token` is gone, and
+    `sudo paladin setup-token` says "Setup is already complete".
+- [ ] **Change password** (menu → Change password):
+  - a wrong current password is refused;
+  - mismatched new passwords are refused;
+  - a valid change works.
+  - Then a second browser that was signed in is signed out, and the old
+    password no longer works.
+- [ ] **Forgot password:** `sudo paladin reset-password`.
+  - Answer N: nothing changes.
+  - Answer y: it prints a new token, and the Web UI goes back to step 1
+    (any open tab gets signed out).
+  - Complete both steps with a new password.
+- [ ] **Older binary:** main's installer with the v0.3.0 release (the
+      curl one-liner before v0.3.1 is published). The summary must NOT say
+      "shown above"; it says the build predates setup tokens.
 - [ ] **Missed-token recovery via a rerun:** on a fresh deploy *before*
       creating the admin, run `scripts/deploy-test.sh paladin-vm-ubuntu --update`.
   - Answer **N** at "Update Paladin …?": it prints "Aborted." then the
